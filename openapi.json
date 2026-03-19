@@ -1,0 +1,556 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Urban Green API",
+    "version": "1.0.0",
+    "description": "Contrato minimo para backend Urban Green (IoT sensores + riego)."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000"
+    }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Plants" },
+    { "name": "Devices" },
+    { "name": "Sensors" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Estado del servicio",
+        "responses": {
+          "200": {
+            "description": "Servidor activo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plants": {
+      "get": {
+        "tags": ["Plants"],
+        "summary": "Lista de plantas configuradas",
+        "responses": {
+          "200": {
+            "description": "Catalogo de plantas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Plant" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plants/{name}": {
+      "get": {
+        "tags": ["Plants"],
+        "summary": "Detalle de planta por nombre",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Nombre de planta (ej: aguacate, palma datilera)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Planta encontrada",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Plant" }
+              }
+            }
+          },
+          "404": {
+            "description": "Planta no encontrada",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices": {
+      "get": {
+        "tags": ["Devices"],
+        "summary": "Lista de sensores registrados",
+        "responses": {
+          "200": {
+            "description": "Listado de dispositivos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Device" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/register": {
+      "post": {
+        "tags": ["Devices"],
+        "summary": "Registrar o actualizar un sensor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterDeviceRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sensor actualizado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RegisterDeviceResponse" }
+              }
+            }
+          },
+          "201": {
+            "description": "Sensor registrado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RegisterDeviceResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Payload invalido",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}": {
+      "get": {
+        "tags": ["Devices"],
+        "summary": "Detalle de sensor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dispositivo encontrado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Device" }
+              }
+            }
+          },
+          "404": {
+            "description": "Dispositivo no encontrado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Devices"],
+        "summary": "Actualizar parcialmente un sensor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PatchDeviceRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sensor actualizado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RegisterDeviceResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Payload invalido",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Devices"],
+        "summary": "Eliminar sensor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sensor eliminado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeleteDeviceResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "No encontrado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sensor-data": {
+      "post": {
+        "tags": ["Sensors"],
+        "summary": "Registrar lectura y devolver recomendacion",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SensorDataRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Lectura procesada",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/WateringDecisionResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Error de validacion o dispositivo/planta",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sensor-history/{device_id}": {
+      "get": {
+        "tags": ["Sensors"],
+        "summary": "Historial de lecturas por sensor",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "minimum": 1, "maximum": 500 }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": { "type": "string", "example": "2026-03-16 00:00:00" }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": { "type": "string", "example": "2026-03-17 00:00:00" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historial filtrado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SensorHistoryResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sensors/latest": {
+      "get": {
+        "tags": ["Sensors"],
+        "summary": "Ultima lectura por sensor con ubicacion",
+        "responses": {
+          "200": {
+            "description": "Snapshot para mapa/dashboard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LatestSensorView" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulate-reading": {
+      "post": {
+        "tags": ["Sensors"],
+        "summary": "Generar lectura simulada para un sensor",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SimulateReadingRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Lectura simulada creada",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SimulateReadingResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Error de validacion",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "running" }
+        },
+        "required": ["status"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "details": { "type": "string" }
+        },
+        "required": ["error"]
+      },
+      "Device": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "device_id": { "type": "string" },
+          "plant_type": { "type": "string" },
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" },
+          "created_at": { "type": "string", "example": "2026-03-17 10:30:00" }
+        },
+        "required": ["id", "device_id", "plant_type", "latitude", "longitude", "created_at"]
+      },
+      "Plant": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "min_soil_moisture": { "type": "number" },
+          "max_soil_moisture": { "type": "number" },
+          "scientific_name": { "type": "string" },
+          "plant_category": { "type": "string" },
+          "water_need": { "type": "string" },
+          "sun_exposure": { "type": "string" },
+          "soil_preference": { "type": "string" },
+          "climate_preference": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "required": ["id", "name", "min_soil_moisture", "max_soil_moisture"]
+      },
+      "RegisterDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string" },
+          "plant_type": { "type": "string" },
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" }
+        },
+        "required": ["device_id", "plant_type", "latitude", "longitude"]
+      },
+      "PatchDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "plant_type": { "type": "string" },
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" }
+        }
+      },
+      "RegisterDeviceResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "example": "Device registered" },
+          "device": { "$ref": "#/components/schemas/Device" }
+        },
+        "required": ["message", "device"]
+      },
+      "DeleteDeviceResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "example": "Device deleted" },
+          "device_id": { "type": "string" }
+        },
+        "required": ["message", "device_id"]
+      },
+      "SensorDataRequest": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string" },
+          "temperature": { "type": "number" },
+          "soil_moisture": { "type": "number" }
+        },
+        "required": ["device_id", "temperature", "soil_moisture"]
+      },
+      "WateringDecisionResponse": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["water", "do_not_water", "optimal"]
+          },
+          "reason": { "type": "string" },
+          "device_id": { "type": "string" },
+          "plant_type": { "type": "string" }
+        },
+        "required": ["action", "reason", "device_id", "plant_type"]
+      },
+      "SensorReading": {
+        "type": "object",
+        "properties": {
+          "temperature": { "type": "number" },
+          "soil_moisture": { "type": "number" },
+          "created_at": { "type": "string", "example": "2026-03-17 10:30:00" }
+        },
+        "required": ["temperature", "soil_moisture", "created_at"]
+      },
+      "SensorHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string" },
+          "filters": {
+            "type": "object",
+            "properties": {
+              "limit": { "type": "integer" },
+              "from": { "type": "string", "nullable": true },
+              "to": { "type": "string", "nullable": true }
+            },
+            "required": ["limit", "from", "to"]
+          },
+          "readings": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SensorReading" }
+          }
+        },
+        "required": ["device_id", "filters", "readings"]
+      },
+      "LatestSensorView": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string" },
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" },
+          "temperature": { "type": "number" },
+          "soil_moisture": { "type": "number" },
+          "updated_at": { "type": "string", "example": "2026-03-17 10:30:00" }
+        },
+        "required": [
+          "device_id",
+          "latitude",
+          "longitude",
+          "temperature",
+          "soil_moisture",
+          "updated_at"
+        ]
+      },
+      "SimulateReadingRequest": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string" }
+        },
+        "required": ["device_id"]
+      },
+      "SimulateReadingResponse": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string" },
+          "temperature": { "type": "number" },
+          "soil_moisture": { "type": "number" },
+          "action": {
+            "type": "string",
+            "enum": ["water", "do_not_water", "optimal"]
+          },
+          "reason": { "type": "string" }
+        },
+        "required": ["device_id", "temperature", "soil_moisture", "action", "reason"]
+      }
+    }
+  }
+}

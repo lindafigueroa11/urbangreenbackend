@@ -46,6 +46,32 @@ npm run dev
 
 Server runs by default on `http://localhost:3000`.
 
+## Deploy on Render
+
+This project is configured to deploy directly on Render using `render.yaml`.
+
+### Recommended (Blueprint)
+
+1. Push this repository to GitHub.
+2. In Render, click **New** -> **Blueprint**.
+3. Select the repository.
+4. Render will create:
+   - a Node web service
+   - a persistent disk mounted at `/var/data`
+5. Deploy.
+
+### Runtime configuration
+
+- `PORT`: provided automatically by Render.
+- `DATABASE_PATH`: set to `/var/data/urbangreen.db` (persistent SQLite file).
+- `NODE_ENV`: set to `production`.
+- Optional `APP_BASE_URL`: if you want to force the OpenAPI server URL.
+
+### Important note about SQLite
+
+SQLite data is persisted only when using the Render disk mount (`/var/data`).  
+Without a persistent disk, data can be lost on restarts/redeploys.
+
 ## API Contract (OpenAPI)
 
 - Contract file: `openapi.json`

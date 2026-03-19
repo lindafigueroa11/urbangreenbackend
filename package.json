@@ -1,19 +1,22 @@
 {
   "name": "urbangreenbackend",
   "version": "1.0.0",
-  "private": true,
-  "main": "netlify/functions/api.js",
+  "main": "server.js",
   "scripts": {
-    "dev": "netlify dev",
-    "start": "netlify dev",
-    "test:local": "node -e \"require('./netlify/functions/api.js'); console.log('api ok')\""
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Urban Green MVP backend API",
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "serverless-http": "^3.2.0"
-  },
-  "devDependencies": {
-    "netlify-cli": "^20.1.0"
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "sqlite3": "^6.0.1"
   }
 }
