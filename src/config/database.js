@@ -7,11 +7,6 @@ function resolveDbPath() {
     return path.resolve(process.env.DATABASE_PATH);
   }
 
-  // Render persistent disks are usually mounted under /var/data.
-  if (process.env.RENDER === "true") {
-    return "/var/data/urbangreen.db";
-  }
-
   const localDataDir = path.join(__dirname, "../../data");
   return path.join(localDataDir, "urbangreen.db");
 }
