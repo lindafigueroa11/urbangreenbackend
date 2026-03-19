@@ -200,3 +200,49 @@ Current modular structure is ready to extend with:
 - irrigation prediction module (`src/services/predictionService.js`)
 - urban water stress analytics (`src/services/analyticsService.js`)
 - multiple sensors per zone (new `zones` and `zone_sensors` tables)
+
+## Netlify Deploy (Serverless)
+
+This repository is now prepared to run on Netlify Functions.
+
+### Local development
+
+```bash
+npm install
+npm run dev
+```
+
+API base URL locally:
+
+`http://localhost:8888/api`
+
+Example:
+
+`GET http://localhost:8888/api/health`
+
+### Deploy in Netlify
+
+1. Push this repo to GitHub.
+2. In Netlify, create **New site from Git** and select this repo.
+3. Build settings:
+   - Build command: *(empty)*
+   - Publish directory: *(empty)*
+4. Deploy.
+
+Routes are available under:
+
+`https://<your-site>.netlify.app/api/*`
+
+### Connect mobile app
+
+In the mobile app `.env`, set:
+
+```env
+EXPO_PUBLIC_API_BASE_URL=https://<your-site>.netlify.app/api
+```
+
+Then restart Expo:
+
+```bash
+npx expo start -c
+```
