@@ -6,6 +6,7 @@ const deviceRoutes = require("./routes/deviceRoutes");
 const sensorRoutes = require("./routes/sensorRoutes");
 const healthRoutes = require("./routes/healthRoutes");
 const plantRoutes = require("./routes/plantRoutes");
+const greenZoneRoutes = require("./routes/greenZoneRoutes");
 const { initDatabase } = require("./config/database");
 
 const app = express();
@@ -24,6 +25,7 @@ app.get("/openapi.json", (_req, res) => {
 
 app.use("/devices", deviceRoutes);
 app.use("/plants", plantRoutes);
+app.use("/green-zones", greenZoneRoutes);
 app.use("/", sensorRoutes);
 app.use("/health", healthRoutes);
 

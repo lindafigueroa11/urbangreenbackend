@@ -1,1 +1,7 @@
-require("./src/server");
+const app = require("./app");
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`Urban Green API running on port ${PORT}`);
+});
