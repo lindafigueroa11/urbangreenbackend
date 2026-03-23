@@ -1,6 +1,8 @@
+const { fetchPlacePhotoBuffer } = require("../../services/googlePlacesPhoto");
 const {
   getHermosilloGreenZones,
-  getGreenZonesInsidePolygon
+  getGreenZonesInsidePolygon,
+  attachGooglePlaceIds
 } = require("../services/greenZoneService");
 
 function isValidPolygon(polygon) {
@@ -26,7 +28,7 @@ async function listHermosilloGreenZones(req, res) {
       source: data.source,
       fetched_at: data.fetchedAt,
       total: data.zones.length,
-      zones: data.zones
+      zones: attachGooglePlaceIds(data.zones)
     });
   } catch (error) {
     return res.status(500).json({
@@ -63,7 +65,47 @@ async function intersectHermosilloGreenZones(req, res) {
   }
 }
 
+async function proxyGooglePlacePhoto(req, res) {
+  try {
+    const placeId = req.query.placeId || req.query.place_id;
+    if (!placeId || typeof placeId !== "string" || placeId.length > 400) {
+      return res.status(400).json({ error: "Query placeId (Place ID de Google) requerido." });
+    }
+
+    if (!process.env.GOOGLE_PLACES_API_KEY) {
+      return res.status(503).json({
+        error: "Fotos de Places no configuradas",
+        details: "Define GOOGLE_PLACES_API_KEY en el servidor y activa Places API (New)."
+      });
+    }
+
+    const maxW = Math.min(
+      4800,
+      Math.max(1, Number(req.query.maxWidthPx) || 800)
+    );
+
+    const result = await fetchPlacePhotoBuffer(placeId.trim(), maxW);
+    if (!result) {
+      return res.status(404).json({ error: "Este lugar no tiene fotos en Google Places." });
+    }
+
+    res.setHeader("Content-Type", result.contentType);
+    if (result.attributions) {
+      res.setHeader("X-Place-Photo-Attributions", result.attributions);
+    }
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.send(result.buffer);
+  } catch (error) {
+    const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 500;
+    return res.status(status).json({
+      error: "No se pudo obtener la foto del lugar",
+      details: error.message
+    });
+  }
+}
+
 module.exports = {
   listHermosilloGreenZones,
-  intersectHermosilloGreenZones
+  intersectHermosilloGreenZones,
+  proxyGooglePlacePhoto
 };

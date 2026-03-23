@@ -4,10 +4,14 @@ const devicesRoutes = require("./routes/devices");
 const sensorDataRoutes = require("./routes/sensorData");
 const greenZonesRoutes = require("./routes/greenZones");
 const plantsRoutes = require("./routes/plants");
+const { apiLimiter } = require("./middleware/rateLimit");
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 app.use(cors());
+app.use(apiLimiter);
 app.use(express.json({ limit: "12mb" }));
 
 app.get("/health", (_req, res) => {

@@ -10,6 +10,27 @@ const HERMOSILLO_BBOX = {
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const cacheFilePath = path.join(__dirname, "../../data/hermosillo-green-zones.json");
+const placeIdMapPath = path.join(__dirname, "../../data/park-google-place-ids.json");
+
+function readGooglePlaceIdMap() {
+  try {
+    if (!fs.existsSync(placeIdMapPath)) return {};
+    const raw = JSON.parse(fs.readFileSync(placeIdMapPath, "utf8"));
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function attachGooglePlaceIds(zones = []) {
+  const map = readGooglePlaceIdMap();
+  return zones.map((z) => {
+    const pid = map[z.id];
+    const trimmed = typeof pid === "string" ? pid.trim() : "";
+    if (!trimmed) return z;
+    return { ...z, google_place_id: trimmed };
+  });
+}
 
 let inMemoryCache = {
   fetchedAt: 0,
@@ -383,11 +404,12 @@ async function getGreenZonesInsidePolygon(polygon, options = {}) {
   return {
     source: payload.source,
     fetchedAt: payload.fetchedAt,
-    zones: filtered
+    zones: attachGooglePlaceIds(filtered)
   };
 }
 
 module.exports = {
   getHermosilloGreenZones,
-  getGreenZonesInsidePolygon
+  getGreenZonesInsidePolygon,
+  attachGooglePlaceIds
 };

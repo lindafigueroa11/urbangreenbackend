@@ -1,25 +1,26 @@
 const express = require("express");
 const { classifyPlantImage } = require("../services/plantClassifier");
+const { classifyLimiter } = require("../middleware/rateLimit");
+const { validateClassifyPayload } = require("../utils/validateClassifyPayload");
 
 const router = express.Router();
 
-router.post("/classify", async (req, res) => {
+router.post("/classify", classifyLimiter, async (req, res) => {
   try {
-    const imageBase64 =
-      req.body?.image_base64 || req.body?.imageBase64 || req.body?.image;
-    const mimeType = req.body?.mimeType || req.body?.mime_type || "image/jpeg";
-    const language = req.body?.language || "es";
-
-    if (!imageBase64) {
-      return res.status(400).json({
-        error: "image_base64 is required"
+    const checked = validateClassifyPayload(req.body);
+    if (!checked.ok) {
+      return res.status(checked.status).json({
+        error: checked.error,
+        ...(checked.details ? { details: checked.details } : {}),
       });
     }
+
+    const { imageBase64, mimeType, language } = checked;
 
     const result = await classifyPlantImage({
       imageBase64,
       mimeType,
-      language
+      language,
     });
 
     return res.status(200).json(result);
