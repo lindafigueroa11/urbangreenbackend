@@ -1,4 +1,7 @@
-const { fetchPlacePhotoBuffer } = require("../../services/googlePlacesPhoto");
+const {
+  fetchPlacePhotoBuffer,
+  fetchPlacePhotoCount,
+} = require("../../services/googlePlacesPhoto");
 const {
   getHermosilloGreenZones,
   getGreenZonesInsidePolygon,
@@ -84,7 +87,12 @@ async function proxyGooglePlacePhoto(req, res) {
       Math.max(1, Number(req.query.maxWidthPx) || 800)
     );
 
-    const result = await fetchPlacePhotoBuffer(placeId.trim(), maxW);
+    const indexRaw = req.query.index ?? req.query.photoIndex;
+    const photoIndex = Number.isFinite(Number(indexRaw))
+      ? Number(indexRaw)
+      : 0;
+
+    const result = await fetchPlacePhotoBuffer(placeId.trim(), maxW, photoIndex);
     if (!result) {
       return res.status(404).json({ error: "Este lugar no tiene fotos en Google Places." });
     }
@@ -104,8 +112,37 @@ async function proxyGooglePlacePhoto(req, res) {
   }
 }
 
+async function proxyGooglePlacePhotoCount(req, res) {
+  try {
+    const placeId = req.query.placeId || req.query.place_id;
+    if (!placeId || typeof placeId !== "string" || placeId.length > 400) {
+      return res.status(400).json({ error: "Query placeId requerido." });
+    }
+
+    if (!process.env.GOOGLE_PLACES_API_KEY) {
+      return res.status(503).json({
+        error: "Fotos de Places no configuradas",
+        details: "Define GOOGLE_PLACES_API_KEY en el servidor y activa Places API (New).",
+      });
+    }
+
+    const { count, attributions } = await fetchPlacePhotoCount(placeId.trim());
+    return res.json({
+      count,
+      attributions: attributions || undefined,
+    });
+  } catch (error) {
+    const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 500;
+    return res.status(status).json({
+      error: "No se pudo obtener el conteo de fotos del lugar",
+      details: error.message,
+    });
+  }
+}
+
 module.exports = {
   listHermosilloGreenZones,
   intersectHermosilloGreenZones,
-  proxyGooglePlacePhoto
+  proxyGooglePlacePhoto,
+  proxyGooglePlacePhotoCount,
 };
