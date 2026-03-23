@@ -4,6 +4,7 @@ const devicesRoutes = require("./routes/devices");
 const sensorDataRoutes = require("./routes/sensorData");
 const greenZonesRoutes = require("./routes/greenZones");
 const plantsRoutes = require("./routes/plants");
+const weatherRoutes = require("./routes/weather");
 const { apiLimiter } = require("./middleware/rateLimit");
 
 const app = express();
@@ -22,6 +23,7 @@ app.use("/devices", devicesRoutes);
 app.use("/sensor-data", sensorDataRoutes);
 app.use("/green-zones", greenZonesRoutes);
 app.use("/plants", plantsRoutes);
+app.use("/weather", weatherRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
