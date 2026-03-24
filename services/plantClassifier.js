@@ -15,7 +15,43 @@ const LOCAL_COMMON_NAME_MAP = {
   "bougainvillea glabra": "Bugambilia",
   "opuntia ficus-indica": "Nopal",
   "washingtonia robusta": "Palma abanico",
-  "jacaranda mimosifolia": "Jacaranda"
+  "jacaranda mimosifolia": "Jacaranda",
+  "delonix regia": "Flamboyán / Framboyán",
+  "pithecellobium dulce": "Guamúchil",
+  "leucaena leucocephala": "Guaje / Leucaena",
+  "caesalpinia pulcherrima": "Ave de paraíso",
+  "tabebuia impetiginosa": "Guayacán rosado",
+  "handroanthus impetiginosus": "Guayacán rosado",
+  "tecoma stans": "Tronadora / Chicalote",
+  "strelitzia reginae": "Ave del paraíso",
+  "nerium oleander": "Adelfa",
+  "ligustrum japonicum": "Aligustre",
+  "lagerstroemia indica": "Lila de las Indias",
+  "melia azedarach": "Paraíso / Cinamomo",
+  "plumeria rubra": "Frangipani / Cacalosúchil",
+  "phoenix dactylifera": "Palma datilera",
+  "citrus sinensis": "Naranjo",
+  "citrus limon": "Limonero",
+  "mangifera indica": "Mango",
+  "persea americana": "Aguacate",
+  "hibiscus rosa-sinensis": "Hibiscus / Tulipán australiano",
+  "pelargonium x hortorum": "Geranio",
+  "agave americana": "Agave / Maguey",
+  "yucca elephantipes": "Yuca",
+  "aloe vera": "Aloe / Sábila",
+  "eucalyptus globulus": "Eucalipto",
+  "fraxinus uhdei": "Fresno",
+  "ulmus parvifolia": "Olmo",
+  "taxodium mucronatum": "Ahuehuete",
+  "psidium guajava": "Guayabo",
+  "punica granatum": "Granado",
+  "citrus reticulata": "Mandarino",
+  "jasminum officinale": "Jazmín",
+  "lavandula angustifolia": "Lavanda",
+  "salvia rosmarinus": "Romero",
+  "rosa spp.": "Rosal",
+  "pinus spp.": "Pino",
+  "quercus spp.": "Encino"
 };
 const DEFAULT_CATALOG_PATHS = [
   path.resolve(__dirname, "../data/especies.txt"),
@@ -49,6 +85,36 @@ function normalizeNameKey(value = "") {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+/**
+ * Heurística: binomio tipo "Género epíteto" sin indicios de nombre común en español.
+ * Evita tomar como "común" un nombre que en realidad es científico.
+ */
+function looksLikeScientificName(s = "") {
+  const t = String(s).trim();
+  if (t.length < 5) return false;
+  if (/\b(de|del|la|el|las|los|y|con|para)\b/i.test(t)) return false;
+  const parts = t.split(/\s+/).filter(Boolean);
+  if (parts.length !== 2) return false;
+  const [a, b] = parts;
+  const genusLike = /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+$/.test(a);
+  const epithetLike = /^[a-záéíóúñ][a-záéíóúñ0-9\-]*$/u.test(b);
+  if (!genusLike || !epithetLike || b.length < 3) return false;
+  if (/(oso|osa|ote|eta|illo|illa|ito|ita|aje|ejo|uje|ada|ido|ado|ura|ure)$/i.test(b))
+    return false;
+  return true;
+}
+
+function pickBestCommonName(candidates) {
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
+  const strs = candidates
+    .map((c) => (typeof c === "string" ? c.trim() : ""))
+    .filter(Boolean);
+  for (const s of strs) {
+    if (!looksLikeScientificName(s)) return s;
+  }
+  return strs[0] || null;
 }
 
 function parseCatalogText(raw = "") {
@@ -139,10 +205,12 @@ function getLocalDisplayName({
   }
 
   if (Array.isArray(commonCandidates) && commonCandidates.length > 0) {
-    const candidate = commonCandidates.find(
-      (item) => typeof item === "string" && item.trim().length > 0
-    );
-    if (candidate) return candidate.trim();
+    const picked = pickBestCommonName(commonCandidates);
+    if (picked) return picked;
+  }
+
+  if (rawLabel && !looksLikeScientificName(rawLabel)) {
+    return rawLabel;
   }
 
   return rawLabel || "Planta sin nombre comun";
@@ -163,11 +231,11 @@ function extractSuggestions(providerJson) {
       null;
     const rawLabel = item?.name || item?.plant_name || item?.species || "Unknown";
     const commonCandidates = [
-      ...(Array.isArray(item?.details?.common_names)
-        ? item.details.common_names
-        : []),
       ...(Array.isArray(item?.details?.common_names_es)
         ? item.details.common_names_es
+        : []),
+      ...(Array.isArray(item?.details?.common_names)
+        ? item.details.common_names
         : []),
       item?.details?.local_name,
       item?.details?.common_name
@@ -188,6 +256,26 @@ function extractSuggestions(providerJson) {
         : null
     };
   });
+}
+
+async function resolveLabelWithLocalPlants(label, scientificName) {
+  const plantModel = require("../src/models/plantModel");
+  const sn = scientificName ? String(scientificName).trim() : "";
+  const lb = label ? String(label).trim() : "";
+  const tryNames = [];
+  if (sn) tryNames.push(sn);
+  if (lb && normalizeNameKey(lb) !== normalizeNameKey(sn)) tryNames.push(lb);
+
+  for (const n of tryNames) {
+    if (!n) continue;
+    try {
+      const row = await plantModel.findByName(n);
+      if (row?.name) return String(row.name).trim();
+    } catch {
+      /* BD no disponible u otro error */
+    }
+  }
+  return lb || sn || String(label || "").trim();
 }
 
 function toPlantType(label = "") {
@@ -273,13 +361,21 @@ async function classifyPlantImage({
       throw error;
     }
 
-    const top = suggestions[0];
+    const enriched = await Promise.all(
+      suggestions.map(async (s) => ({
+        ...s,
+        label: await resolveLabelWithLocalPlants(s.label, s.scientific_name),
+      }))
+    );
+
+    const top = enriched[0];
+    const typeHint = top.scientific_name || top.label;
     return {
       label: top.label,
       scientific_name: top.scientific_name,
-      plant_type: toPlantType(top.label),
+      plant_type: toPlantType(typeHint),
       confidence: top.confidence,
-      alternatives: suggestions.slice(1, 4),
+      alternatives: enriched.slice(1, 4),
       source: "plant.id"
     };
   } finally {
