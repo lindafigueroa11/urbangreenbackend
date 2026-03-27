@@ -1,7 +1,9 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const devicesRoutes = require("./routes/devices");
 const sensorDataRoutes = require("./routes/sensorData");
+const authRoutes = require("./routes/auth");
 const greenZonesRoutes = require("./routes/greenZones");
 const plantsRoutes = require("./routes/plants");
 const weatherRoutes = require("./routes/weather");
@@ -14,11 +16,25 @@ app.set("trust proxy", 1);
 app.use(cors());
 app.use(apiLimiter);
 app.use(express.json({ limit: "12mb" }));
+app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.get("/privacy", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "privacy.html"));
+});
+
+app.get("/terms", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "terms.html"));
+});
+
+app.use("/auth", authRoutes);
 app.use("/devices", devicesRoutes);
 app.use("/sensor-data", sensorDataRoutes);
 app.use("/green-zones", greenZonesRoutes);

@@ -1,7 +1,7 @@
 const express = require("express");
 const {
   listHermosilloGreenZones,
-  intersectHermosilloGreenZones,
+  intersectHermosilloGreenZones, 
   proxyGooglePlacePhoto,
   proxyGooglePlacePhotoCount
 } = require("../src/controllers/greenZoneController");
