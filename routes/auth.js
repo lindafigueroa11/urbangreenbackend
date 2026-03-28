@@ -1,10 +1,12 @@
+const crypto = require("crypto");
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 const pool = require("../db");
 const {
   generateVerificationToken,
-  sendVerificationEmail,
+  sendVerificationEmailBackground,
 } = require("../services/emailVerification");
 
 const router = express.Router();
@@ -73,16 +75,7 @@ router.post("/register", async (req, res) => {
 
     const userId = created.rows[0].id;
 
-    try {
-      await sendVerificationEmail(normalizedEmail, verifyToken);
-    } catch (mailErr) {
-      console.error("POST /auth/register mail error:", mailErr);
-      await pool.query("DELETE FROM users WHERE id = $1", [userId]);
-      return res.status(500).json({
-        message:
-          "No se pudo enviar el correo de activación. Revisa la configuración SMTP o intenta más tarde.",
-      });
-    }
+    sendVerificationEmailBackground(normalizedEmail, verifyToken, { userId });
 
     return res.status(201).json({
       message: "Te enviamos un correo para activar tu cuenta.",
@@ -225,14 +218,9 @@ router.post("/resend-verification", async (req, res) => {
       [verifyToken, verifyExpires, result.rows[0].id]
     );
 
-    try {
-      await sendVerificationEmail(emailNorm, verifyToken);
-    } catch (mailErr) {
-      console.error("POST /auth/resend-verification mail error:", mailErr);
-      return res.status(500).json({
-        message: "No se pudo enviar el correo. Intenta más tarde.",
-      });
-    }
+    sendVerificationEmailBackground(emailNorm, verifyToken, {
+      userId: result.rows[0].id,
+    });
 
     return res.json({
       message: "Si existe una cuenta pendiente, te enviamos un correo.",
@@ -240,6 +228,98 @@ router.post("/resend-verification", async (req, res) => {
   } catch (error) {
     console.error("POST /auth/resend-verification error:", error);
     return res.status(500).json({ message: "Error al reenviar." });
+  }
+});
+
+router.post("/google", async (req, res) => {
+  try {
+    const googleClientId = process.env.GOOGLE_WEB_CLIENT_ID;
+    if (!googleClientId) {
+      return res.status(501).json({
+        message:
+          "Google no está configurado en el servidor (GOOGLE_WEB_CLIENT_ID).",
+      });
+    }
+
+    const { token, tokenType } = req.body || {};
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ message: "Falta token de Google." });
+    }
+
+    const oauth2 = new OAuth2Client(googleClientId);
+    let email;
+    let name;
+
+    if (tokenType === "access_token") {
+      const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        return res.status(401).json({ message: "Token de acceso de Google inválido." });
+      }
+      const u = await r.json();
+      email = u.email;
+      name = u.name || u.given_name || (email ? email.split("@")[0] : "Usuario");
+    } else {
+      const ticket = await oauth2.verifyIdToken({
+        idToken: token,
+        audience: googleClientId,
+      });
+      const payload = ticket.getPayload();
+      email = payload?.email;
+      name =
+        payload?.name ||
+        payload?.given_name ||
+        (email ? email.split("@")[0] : "Usuario");
+    }
+
+    if (!email) {
+      return res.status(401).json({ message: "No se pudo obtener el email de Google." });
+    }
+
+    const emailNorm = String(email).trim().toLowerCase();
+    const nameTrim = String(name || "Usuario").trim().slice(0, 120);
+
+    const existing = await pool.query(
+      "SELECT id, username, email, email_verified FROM users WHERE email = $1 LIMIT 1",
+      [emailNorm]
+    );
+
+    let userRow;
+    if (existing.rowCount === 0) {
+      const randomHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+      const ins = await pool.query(
+        `INSERT INTO users (username, email, password_hash, email_verified, verification_token, verification_expires)
+         VALUES ($1, $2, $3, TRUE, NULL, NULL)
+         RETURNING id, username, email`,
+        [nameTrim, emailNorm, randomHash]
+      );
+      userRow = ins.rows[0];
+    } else {
+      userRow = existing.rows[0];
+      if (!userRow.email_verified) {
+        await pool.query("UPDATE users SET email_verified = TRUE WHERE id = $1", [userRow.id]);
+      }
+    }
+
+    const user = toPublicUser(userRow);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const expiresInSeconds = 7 * 24 * 60 * 60;
+    const sessionToken = jwt.sign(
+      { sub: user.id, email: user.email },
+      getJwtSecret(),
+      { algorithm: "HS256", expiresIn: expiresInSeconds }
+    );
+    const expiration = new Date((nowSeconds + expiresInSeconds) * 1000).toISOString();
+
+    return res.status(200).json({
+      token: sessionToken,
+      expiration,
+      user,
+    });
+  } catch (error) {
+    console.error("POST /auth/google error:", error);
+    return res.status(401).json({ message: "No se pudo validar el inicio de sesión con Google." });
   }
 });
 

@@ -13,8 +13,7 @@ async function ensureAuthSchemaWithRetry(maxAttempts = 5) {
       const isLastAttempt = attempt === maxAttempts;
       console.error(`Auth schema init failed (attempt ${attempt}/${maxAttempts}):`, error);
       if (isLastAttempt) {
-        console.error("Auth schema could not be initialized. Server will continue running.");
-        return;
+        throw error;
       }
       const waitMs = attempt * 2000;
       await new Promise((resolve) => setTimeout(resolve, waitMs));
@@ -22,9 +21,18 @@ async function ensureAuthSchemaWithRetry(maxAttempts = 5) {
   }
 }
 
-app.listen(PORT, () => {
-  console.log(`Urban Green API running on port ${PORT}`);
-  ensureAuthSchemaWithRetry().catch((error) => {
-    console.error("Unexpected schema initialization error:", error);
+(async () => {
+  try {
+    await ensureAuthSchemaWithRetry();
+  } catch (error) {
+    console.error(
+      "Fatal: no se pudo crear/actualizar la tabla users. Revisa DATABASE_URL y ejecuta scripts/supabase-users-schema.sql en Supabase si hace falta."
+    );
+    console.error(error);
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Urban Green API running on port ${PORT}`);
   });
-});
+})();
