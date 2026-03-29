@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "node -r dotenv/config server.js",
     "start": "node server.js",
     "build:place-ids": "node scripts/build-park-google-place-ids.js --write",
-    "build:place-ids:dry": "node scripts/build-park-google-place-ids.js --dry-run --limit=5"
+    "build:place-ids:dry": "node scripts/build-park-google-place-ids.js --dry-run --limit=5",
+    "invalidate-green-zones-cache": "node -r dotenv/config scripts/invalidate-green-zones-cache.js"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,7 @@
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
     "google-auth-library": "^9.14.1",

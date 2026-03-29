@@ -1,5 +1,7 @@
 const fs = require("fs");
 const path = require("path");
+const { categorize, categoryLabelEs } = require("./greenZoneCategorize");
+const { mergeExternalPlacesIntoZones } = require("./externalPlaces");
 
 const HERMOSILLO_BBOX = {
   south: 28.95,
@@ -38,15 +40,32 @@ let inMemoryCache = {
   zones: []
 };
 
+function fallbackEntry(id, name, lat, lng) {
+  const osm = { leisure: "park", name };
+  const { code, confidence } = categorize(osm, name);
+  return {
+    id,
+    name,
+    latitude: lat,
+    longitude: lng,
+    polygon: null,
+    category_code: code,
+    confidence,
+    sources: ["osm"],
+    tags: { osm, external: {} },
+    category: categoryLabelEs(code)
+  };
+}
+
 const fallbackZones = [
-  { id: "fallback-1", name: "Parque Madero", category: "park", latitude: 29.0876, longitude: -110.9525 },
-  { id: "fallback-2", name: "Parque La Ruina", category: "park", latitude: 29.1215, longitude: -110.9675 },
-  { id: "fallback-3", name: "Parque Infantil", category: "park", latitude: 29.0824, longitude: -110.9559 },
-  { id: "fallback-4", name: "Bosque Urbano La Sauceda", category: "park", latitude: 29.1044, longitude: -110.9748 },
-  { id: "fallback-5", name: "Parque Solidaridad", category: "park", latitude: 29.1118, longitude: -110.9344 },
-  { id: "fallback-6", name: "Parque Francisco I. Madero", category: "park", latitude: 29.0872, longitude: -110.9513 },
-  { id: "fallback-7", name: "Parque de la Madre", category: "park", latitude: 29.0735, longitude: -110.9536 },
-  { id: "fallback-8", name: "Parque Hundido", category: "park", latitude: 29.0992, longitude: -110.9488 }
+  fallbackEntry("fallback-1", "Parque Madero", 29.0876, -110.9525),
+  fallbackEntry("fallback-2", "Parque La Ruina", 29.1215, -110.9675),
+  fallbackEntry("fallback-3", "Parque Infantil", 29.0824, -110.9559),
+  fallbackEntry("fallback-4", "Bosque Urbano La Sauceda", 29.1044, -110.9748),
+  fallbackEntry("fallback-5", "Parque Solidaridad", 29.1118, -110.9344),
+  fallbackEntry("fallback-6", "Parque Francisco I. Madero", 29.0872, -110.9513),
+  fallbackEntry("fallback-7", "Parque de la Madre", 29.0735, -110.9536),
+  fallbackEntry("fallback-8", "Parque Hundido", 29.0992, -110.9488)
 ];
 
 function sanitizeZones(zones = []) {
@@ -63,25 +82,72 @@ function ensureDataDir() {
 
 function buildOverpassQuery() {
   const { south, west, north, east } = HERMOSILLO_BBOX;
+  const leisureExtra =
+    "garden|nature_reserve|recreation_ground|playground|stadium|sports_centre|track|golf_course|fitness_station|skatepark";
   return `
-[out:json][timeout:60];
+[out:json][timeout:120];
 (
-  way["leisure"~"park|garden|nature_reserve|recreation_ground"](${south},${west},${north},${east});
-  relation["leisure"~"park|garden|nature_reserve|recreation_ground"](${south},${west},${north},${east});
-  way["landuse"~"grass|forest|village_green|recreation_ground"](${south},${west},${north},${east});
-  relation["landuse"~"grass|forest|village_green|recreation_ground"](${south},${west},${north},${east});
+  way["leisure"="park"](${south},${west},${north},${east});
+  way["leisure"="pitch"](${south},${west},${north},${east});
+  way["landuse"="grass"](${south},${west},${north},${east});
+  way["natural"="wood"](${south},${west},${north},${east});
+  way["natural"="scrub"](${south},${west},${north},${east});
+  way["highway"="path"](${south},${west},${north},${east});
+  relation["leisure"="park"](${south},${west},${north},${east});
+  way["leisure"~"${leisureExtra}"](${south},${west},${north},${east});
+  relation["leisure"~"${leisureExtra}"](${south},${west},${north},${east});
+  way["landuse"~"forest|village_green|recreation_ground"](${south},${west},${north},${east});
+  relation["landuse"~"forest|village_green|recreation_ground"](${south},${west},${north},${east});
 );
 out tags center geom;
   `.trim();
 }
 
-function getCategoryFromTags(tags = {}) {
-  return (
-    tags.leisure ||
-    tags.landuse ||
-    tags.natural ||
-    "green_zone"
-  );
+function normalizeOsmZoneShape({ id, name, latitude, longitude, polygon, tags }) {
+  const osmTags = { ...(tags || {}) };
+  const { code, confidence } = categorize(osmTags, name);
+  return {
+    id,
+    name,
+    latitude,
+    longitude,
+    polygon,
+    category_code: code,
+    confidence,
+    sources: ["osm"],
+    tags: { osm: osmTags, external: {} },
+    category: categoryLabelEs(code)
+  };
+}
+
+function migrateZoneShape(zone) {
+  if (!zone || typeof zone !== "object") return zone;
+  if (zone.category_code && zone.tags && zone.tags.osm !== undefined) {
+    return {
+      ...zone,
+      category: zone.category || categoryLabelEs(zone.category_code),
+      sources: zone.sources?.length ? zone.sources : ["osm"],
+      tags: {
+        osm: zone.tags.osm || {},
+        external: zone.tags.external && typeof zone.tags.external === "object" ? zone.tags.external : {}
+      }
+    };
+  }
+  const flat = zone.tags && !zone.tags.osm ? zone.tags : {};
+  const osm = zone.tags?.osm ?? flat;
+  const name = zone.name || "";
+  const { code, confidence } = categorize(osm, name);
+  return {
+    ...zone,
+    category_code: zone.category_code || code,
+    confidence: zone.confidence ?? confidence,
+    sources: zone.sources?.length ? zone.sources : ["osm"],
+    tags: {
+      osm: osm && typeof osm === "object" ? osm : {},
+      external: zone.tags?.external && typeof zone.tags.external === "object" ? zone.tags.external : {}
+    },
+    category: zone.category || categoryLabelEs(zone.category_code || code)
+  };
 }
 
 function normalizeName(tags = {}) {
@@ -124,28 +190,27 @@ function transformOverpassElements(elements = []) {
       const tags = element.tags || {};
       const id = `${element.type || "feature"}/${element.id || Math.random().toString(36).slice(2)}`;
       const name = normalizeName(tags);
-      const category = getCategoryFromTags(tags);
       if (!name || isExcludedByTags(tags, name)) return null;
+      if (tags.highway === "path" && !String(name).trim()) return null;
 
       const polygon = Array.isArray(element.geometry)
         ? element.geometry.map((p) => [Number(p.lon), Number(p.lat)])
         : null;
 
-      return {
+      return normalizeOsmZoneShape({
         id,
         name,
-        category,
         latitude: center.latitude,
         longitude: center.longitude,
         polygon,
         tags
-      };
+      });
     })
     .filter(Boolean);
 
   const dedupByName = new Map();
   for (const zone of mapped) {
-    const key = `${zone.name.toLowerCase()}|${zone.category}`;
+    const key = `${zone.name.toLowerCase()}|${zone.category_code}`;
     if (!dedupByName.has(key)) {
       dedupByName.set(key, zone);
     }
@@ -181,7 +246,8 @@ function readFromDiskCache() {
     const raw = fs.readFileSync(cacheFilePath, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed?.zones) || !parsed.zones.length) return null;
-    const cleanZones = sanitizeZones(parsed.zones);
+    const migrated = parsed.zones.map(migrateZoneShape);
+    const cleanZones = sanitizeZones(migrated);
     if (!cleanZones.length) return null;
     return { ...parsed, zones: cleanZones };
   } catch {
@@ -196,6 +262,30 @@ function writeToDiskCache(payload) {
   } catch {
     // ignore disk cache write errors
   }
+}
+
+function clearGreenZonesDiskCache() {
+  try {
+    if (fs.existsSync(cacheFilePath)) {
+      fs.unlinkSync(cacheFilePath);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function resetGreenZonesMemoryCache() {
+  inMemoryCache = {
+    fetchedAt: 0,
+    source: "none",
+    zones: []
+  };
+}
+
+/** Vacía memoria y borra el JSON en disco (p. ej. antes de redeploy o vía script). */
+function invalidateGreenZonesCache() {
+  resetGreenZonesMemoryCache();
+  clearGreenZonesDiskCache();
 }
 
 async function getHermosilloGreenZones({ forceRefresh = false } = {}) {
@@ -214,10 +304,16 @@ async function getHermosilloGreenZones({ forceRefresh = false } = {}) {
     if (!cleanZones.length) {
       throw new Error("No named green zones after sanitization");
     }
+    const hasExternalKeys =
+      (process.env.GEOAPIFY_API_KEY && String(process.env.GEOAPIFY_API_KEY).trim()) ||
+      (process.env.FOURSQUARE_API_KEY && String(process.env.FOURSQUARE_API_KEY).trim());
+    const merged = hasExternalKeys
+      ? await mergeExternalPlacesIntoZones(cleanZones, HERMOSILLO_BBOX)
+      : cleanZones;
     const payload = {
       fetchedAt: now,
-      source: "overpass",
-      zones: cleanZones
+      source: hasExternalKeys ? "overpass+external" : "overpass",
+      zones: merged
     };
     inMemoryCache = payload;
     writeToDiskCache(payload);
@@ -411,5 +507,11 @@ async function getGreenZonesInsidePolygon(polygon, options = {}) {
 module.exports = {
   getHermosilloGreenZones,
   getGreenZonesInsidePolygon,
-  attachGooglePlaceIds
+  attachGooglePlaceIds,
+  categorize,
+  categoryLabelEs,
+  migrateZoneShape,
+  invalidateGreenZonesCache,
+  clearGreenZonesDiskCache,
+  resetGreenZonesMemoryCache
 };

@@ -44,7 +44,11 @@ async function listHermosilloGreenZones(req, res) {
 async function intersectHermosilloGreenZones(req, res) {
   try {
     const polygon = req.body?.polygon;
-    const forceRefresh = Boolean(req.body?.refresh);
+    const rawRefresh = req.body?.refresh;
+    const forceRefresh =
+      rawRefresh === true ||
+      String(rawRefresh || "").toLowerCase() === "true" ||
+      rawRefresh === 1;
 
     if (!isValidPolygon(polygon)) {
       return res.status(400).json({

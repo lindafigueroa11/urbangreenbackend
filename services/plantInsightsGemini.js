@@ -23,9 +23,14 @@ function buildGeminiUrl(model, apiKey) {
 }
 
 function buildBody(instruction, userPayload, useJsonMime) {
+  const maxOut = (() => {
+    const n = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS);
+    if (Number.isFinite(n) && n >= 256 && n <= 8192) return Math.floor(n);
+    return 2048;
+  })();
   const gen = {
     temperature: 0.35,
-    maxOutputTokens: 1024,
+    maxOutputTokens: maxOut,
   };
   if (useJsonMime) {
     gen.responseMimeType = "application/json";

@@ -1,4 +1,10 @@
-const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_TIMEOUT_MS = 120000;
+
+function getMaxOutputTokens() {
+  const n = Number(process.env.GEMINI_TEST_MAX_OUTPUT_TOKENS);
+  if (Number.isFinite(n) && n >= 256 && n <= 8192) return Math.floor(n);
+  return 4096;
+}
 
 function getApiKey() {
   return String(process.env.GEMINI_API_KEY || "").trim();
@@ -57,7 +63,7 @@ async function geminiTestEcho(input) {
         ],
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 512,
+          maxOutputTokens: getMaxOutputTokens(),
         },
       }),
       signal: controller.signal,
@@ -84,13 +90,22 @@ async function geminiTestEcho(input) {
       throw err;
     }
 
+    const cand = data?.candidates?.[0];
     const text =
-      data?.candidates?.[0]?.content?.parts
+      cand?.content?.parts
         ?.map((p) => (typeof p?.text === "string" ? p.text : ""))
         .join("")
         .trim() || "";
 
-    return { reply: text || "(respuesta vacía)", model };
+    const finishReason = cand?.finishReason || null;
+    const truncated = finishReason === "MAX_TOKENS";
+
+    return {
+      reply: text || "(respuesta vacía)",
+      model,
+      ...(truncated ? { warning: "Respuesta limitada por maxOutputTokens; sube GEMINI_TEST_MAX_OUTPUT_TOKENS si hace falta." } : {}),
+      ...(finishReason ? { finishReason } : {}),
+    };
   } catch (e) {
     if (e.name === "AbortError") {
       const err = new Error("Tiempo de espera agotado al llamar a Gemini.");

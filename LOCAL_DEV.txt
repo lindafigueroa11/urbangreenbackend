@@ -1,0 +1,32 @@
+Desarrollo local (antes de subir a Render)
+========================================
+
+1) Instala dependencias (una vez):
+   npm install
+
+2) Crea tu archivo .env:
+   - Copia .env.example a .env
+   - Pon DATABASE_URL (misma base que en producción o una de Supabase de prueba)
+   - Pon JWT_SECRET
+   - Para probar Gemini: GEMINI_API_KEY (y opcional GEMINI_MODEL)
+   - No subas .env a git (ya está en .gitignore)
+
+3) Arranca el API en tu PC:
+   npm run dev
+
+   Usa "npm run dev" (no solo "npm start") para que cargue automáticamente el archivo .env.
+   "npm start" es el mismo servidor pero sin leer .env (como suele usarse en Render con variables del panel).
+
+4) Comprueba:
+   http://localhost:3000/health
+
+5) Prueba Gemini desde Postman:
+   POST http://localhost:3000/plants/gemini-test
+   Body JSON: {"message":"hola"}
+
+6) App Expo en el móvil / emulador:
+   Apunta EXPO_PUBLIC_API_URL a tu PC, por ejemplo:
+   http://192.168.1.X:3000
+   (la IP de tu máquina en la red Wi‑Fi, no "localhost" desde el teléfono)
+
+7) Cuando todo vaya bien, sube el código y configura las mismas variables en Render (sin el .env).
