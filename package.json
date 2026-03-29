@@ -7,7 +7,8 @@
     "start": "node server.js",
     "build:place-ids": "node scripts/build-park-google-place-ids.js --write",
     "build:place-ids:dry": "node scripts/build-park-google-place-ids.js --dry-run --limit=5",
-    "invalidate-green-zones-cache": "node -r dotenv/config scripts/invalidate-green-zones-cache.js"
+    "invalidate-green-zones-cache": "node -r dotenv/config scripts/invalidate-green-zones-cache.js",
+    "check:google-env": "node scripts/check-google-backend-env.js"
   },
   "keywords": [],
   "author": "",

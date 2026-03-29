@@ -1,274 +1,167 @@
-# Urban Green Backend (MVP)
+# Urban Green Backend
 
-Backend API for ingesting IoT sensor data (ESP32), storing sensor history, and deciding watering actions based on plant-specific soil moisture thresholds.
+API REST para la app Urban Green: autenticación (PostgreSQL), sensores/dispositivos, clima, identificación de plantas (Gemini), zonas verdes en Hermosillo (OpenStreetMap / Overpass + opcional Geoapify y Foursquare) y fotos de parques vía Google Places.
 
 ## Stack
 
-- Node.js
-- Express.js
-- SQLite
-- REST API
+- **Node.js** 20.x
+- **Express** 5
+- **PostgreSQL** (`pg`) — usuarios, sesiones y tablas gestionadas al arranque
+- **SQLite** (`sqlite3`) — datos locales según módulos que usen `src/config/database.js`
+- **dotenv** — variables desde `.env` (copiar de [`.env.example`](./.env.example))
 
-## Project Structure
+## Estructura principal
 
 ```
 .
-|-- src
-|   |-- config
-|   |   `-- database.js
-|   |-- controllers
-|   |   |-- deviceController.js
-|   |   |-- healthController.js
-|   |   `-- sensorDataController.js
-|   |-- models
-|   |   |-- deviceModel.js
-|   |   |-- plantModel.js
-|   |   `-- sensorDataModel.js
-|   |-- routes
-|   |   |-- deviceRoutes.js
-|   |   |-- healthRoutes.js
-|   |   `-- sensorRoutes.js
-|   |-- services
-|   |   `-- wateringService.js
-|   `-- server.js
-|-- data
-|   `-- urbangreen.db (auto-generated)
-|-- server.js
-`-- README.md
+├── app.js                 # Express: middleware, montaje de rutas
+├── server.js              # Arranque, migraciones auth/schema
+├── db.js                  # Pool PostgreSQL (DATABASE_URL)
+├── routes/                # Routers por dominio
+│   ├── auth.js
+│   ├── devices.js
+│   ├── sensorData.js
+│   ├── greenZones.js
+│   ├── plants.js
+│   ├── userPlants.js
+│   └── weather.js
+├── src/
+│   ├── controllers/
+│   ├── services/          # Lógica (p. ej. greenZoneService, plantInsights…)
+│   └── ...
+├── data/                  # Caché y datos locales (gitignored según .gitignore)
+│   ├── hermosillo-green-zones.json   # caché Overpass (TTL en servicio)
+│   └── park-google-place-ids.json    # mapeo zona → Google Place ID (fotos)
+├── scripts/
+│   ├── invalidate-green-zones-cache.js
+│   └── build-park-google-place-ids.js
+└── public/                # Página raíz, privacidad, términos
 ```
 
-## Run Instructions
+## Arranque local
 
 ```bash
 npm install
+cp .env.example .env   # Windows: copia manual; rellena DATABASE_URL, JWT_SECRET, etc.
 npm run dev
 ```
 
-Server runs by default on `http://localhost:3000`.
+Por defecto el servidor escucha en `http://localhost:3000` (o el `PORT` definido en `.env`).
 
-## Deploy on Render
+## Scripts npm
 
-This project is configured to deploy directly on Render using `render.yaml`.
+| Script | Descripción |
+|--------|-------------|
+| `npm run dev` | Servidor con `dotenv` cargado |
+| `npm start` | Producción (`node server.js`, sin dotenv; en hosting las env vienen del panel) |
+| `npm run invalidate-green-zones-cache` | Borra `data/hermosillo-green-zones.json` (ver nota abajo) |
+| `npm run build:place-ids` | Genera/actualiza `park-google-place-ids.json` (ver script) |
+| `npm run check:google-env` | Comprueba que `.env` tenga `GOOGLE_WEB_CLIENT_ID` (OAuth Google) |
 
-### Recommended (Blueprint)
+## Variables de entorno (resumen)
 
-1. Push this repository to GitHub.
-2. In Render, click **New** -> **Blueprint**.
-3. Select the repository.
-4. Render will create:
-   - a Node web service
-   - a persistent disk mounted at `/var/data`
-5. Deploy.
+Ver [`.env.example`](./.env.example) para la lista completa. Destacadas:
 
-### Runtime configuration
+| Variable | Uso |
+|----------|-----|
+| `PORT` | Puerto HTTP (Render lo inyecta) |
+| `DATABASE_URL` | PostgreSQL (usuarios / datos que usen `db.js`) |
+| `JWT_SECRET` | Tokens de sesión |
+| `GOOGLE_WEB_CLIENT_ID` | Mismo Client ID OAuth **Web** que `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` en la app; requerido para `POST /auth/google` (checklist Google Cloud en el repo de la app: `docs/GOOGLE_AUTH_SETUP.md`) |
+| `GOOGLE_PLACES_API_KEY` | Proxy de fotos `/green-zones/hermosillo/place-photo*` |
+| `GEOAPIFY_API_KEY` | Opcional: enriquecimiento de zonas tras Overpass |
+| `FOURSQUARE_API_KEY` | Opcional: idem |
+| `PUBLIC_API_URL` | URLs en correos (verificación, etc.) |
 
-- `PORT`: provided automatically by Render.
-- `DATABASE_PATH`: set to `/var/data/urbangreen.db` (persistent SQLite file).
-- `NODE_ENV`: set to `production`.
-- Optional `APP_BASE_URL`: if you want to force the OpenAPI server URL.
+## Rutas HTTP actuales
 
-### Important note about SQLite
+Base: `http://localhost:3000` (o tu URL de producción).
 
-SQLite data is persisted only when using the Render disk mount (`/var/data`).  
-Without a persistent disk, data can be lost on restarts/redeploys.
+### Raíz y estáticos
 
-## API Contract (OpenAPI)
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/` | `public/index.html` |
+| `GET` | `/health` | `{ "status": "ok" }` |
+| `GET` | `/privacy` | Página de privacidad |
+| `GET` | `/terms` | Términos |
 
-- Contract file: `openapi.json`
-- Endpoint to consume live contract: `GET /openapi.json`
+### Autenticación — `/auth`
 
-You can paste `openapi.json` into [Swagger Editor](https://editor.swagger.io/) to visualize and validate.
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/auth/register` | Registro |
+| `POST` | `/auth/login` | Login |
+| `GET` | `/auth/verify-email` | Verificación de correo (query según implementación) |
+| `POST` | `/auth/resend-verification` | Reenvío de verificación |
+| `POST` | `/auth/google` | Login con Google |
 
-## API Endpoints
+### Dispositivos — `/devices`
 
-### Health
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/devices` | Lista dispositivos |
+| `POST` | `/devices` | Alta (`name`, `location`, `latitude`, `longitude`) |
 
-- `GET /health`
+### Datos de sensor — `/sensor-data`
 
-Response:
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/sensor-data` | Ingesta: `device_id`, `temperature`, `humidity`, `soil_moisture` |
+| `GET` | `/sensor-data` | Últimas lecturas globales; query `limit` (1–100, default 100) |
+| `GET` | `/sensor-data/:device_id` | Hasta 100 lecturas de ese `device_id` |
 
-```json
-{
-  "status": "running"
-}
-```
+### Zonas verdes (Hermosillo) — `/green-zones`
 
-### Register Device
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/green-zones/hermosillo` | Lista zonas en caché. Query: `refresh=true` fuerza nuevo fetch Overpass (+ externas si hay API keys) |
+| `POST` | `/green-zones/hermosillo/intersections` | Zonas que intersectan un polígono. Body: `{ "polygon": [[lng,lat], ...], "refresh": true }` (opcional) |
+| `GET` | `/green-zones/hermosillo/place-photo` | Proxy imagen de parque (Google Places) |
+| `GET` | `/green-zones/hermosillo/place-photo-count` | Proxy conteo de fotos |
 
-- `POST /devices/register`
-- `GET /devices`
-- `GET /devices/:device_id`
-- `PATCH /devices/:device_id`
-- `DELETE /devices/:device_id`
+Respuesta de zonas incluye campos como `category_code`, `confidence`, `sources`, `tags: { osm, external }` y `category` (español) según el servicio actual.
 
-Body:
+### Plantas (`/plants`)
 
-```json
-{
-  "device_id": "sensor_001",
-  "plant_type": "jacaranda",
-  "latitude": 29.0729,
-  "longitude": -110.9559
-}
-```
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/plants/classify` | Clasificación de imagen (rate limit) |
+| `POST` | `/plants/insights` | Notas / insights (Gemini u otro proveedor) |
+| `POST` | `/plants/gemini-test` | Prueba de conexión Gemini (si está configurado) |
 
-### List Plants Catalog
+### Plantas de usuario — `/user` (requiere autenticación)
 
-- `GET /plants`
-- `GET /plants/:name`
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/user/plants` | Lista plantas guardadas del usuario |
+| `POST` | `/user/plants` | Guardar identificación |
+| `DELETE` | `/user/plants/:id` | Eliminar |
 
-Returns all configured plants with:
+### Clima — `/weather`
 
-- watering thresholds (`min_soil_moisture`, `max_soil_moisture`)
-- scientific name
-- category
-- water demand
-- sun/soil/climate preferences
-- agronomic notes
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/weather/temperature` | Temperatura (query según controlador) |
+| `POST` | `/weather/temperature/batch` | Lote de puntos para temperatura |
 
-Example:
+### Contrato OpenAPI
 
-- `GET /plants/aguacate`
-- `GET /plants/palma%20datilera`
+Si el repositorio incluye `openapi.json`, puede estar desactualizado respecto a las rutas anteriores; la fuente de verdad es `app.js` y los archivos en `routes/`.
 
-### Ingest Sensor Data + Watering Decision
+## Caché de zonas verdes
 
-- `POST /sensor-data`
-- Requires a previously registered device in `devices`.
+- **Memoria + disco**: el servicio guarda resultados en `data/hermosillo-green-zones.json` y en memoria con TTL.
+- **Forzar datos nuevos**: `GET /green-zones/hermosillo?refresh=true` o `POST` intersections con `"refresh": true`.
+- **Solo borrar archivo en disco** (p. ej. antes de reiniciar): `npm run invalidate-green-zones-cache`. Con el API en ejecución, para refrescar al momento usa `refresh=true` en la petición.
 
-Body:
+## Despliegue (Render u otro PaaS)
 
-```json
-{
-  "device_id": "sensor_001",
-  "temperature": 32,
-  "soil_moisture": 25,
-  "plant_type": "jacaranda",
-  "latitude": 29.0729,
-  "longitude": -110.9559
-}
-```
+1. Variables de entorno en el panel (no subir `.env` al repositorio).
+2. `npm start` como comando de arranque.
+3. `DATABASE_URL` apuntando a Postgres gestionado.
+4. Disco persistente opcional si guardas SQLite o archivos en `data/` (en Render suele montarse un volumen).
 
-Response example:
+## Documentación histórica
 
-```json
-{
-  "action": "water",
-  "reason": "soil moisture below plant threshold",
-  "device_id": "sensor_001",
-  "plant_type": "jacaranda"
-}
-```
-
-### Sensor History
-
-- `GET /sensor-history/:device_id`
-- `GET /sensor-history/:device_id?limit=50&from=2026-03-16 00:00:00&to=2026-03-17 00:00:00`
-
-Response example:
-
-```json
-{
-  "device_id": "sensor_001",
-  "readings": [
-    {
-      "temperature": 32,
-      "soil_moisture": 25,
-      "created_at": "2026-03-16 20:52:57"
-    }
-  ]
-}
-```
-
-### Simulate Reading
-
-- `POST /simulate-reading`
-
-Body:
-
-```json
-{
-  "device_id": "sensor_001"
-}
-```
-
-Response example:
-
-```json
-{
-  "device_id": "sensor_001",
-  "temperature": 34,
-  "soil_moisture": 22,
-  "action": "water",
-  "reason": "soil moisture below recommended level"
-}
-```
-
-## Watering Decision Rules
-
-`wateringService.js` compares `soil_moisture` against plant thresholds:
-
-- if `< min_soil_moisture` -> `water`
-- if `> max_soil_moisture` -> `do_not_water`
-- otherwise -> `optimal`
-
-## Seeded Plants
-
-- jacaranda -> min 30, max 50
-- ficus -> min 40, max 60
-- encino -> min 35, max 55
-
-## Future-Ready Notes
-
-Current modular structure is ready to extend with:
-
-- weather API integration (`src/services/weatherService.js`)
-- irrigation prediction module (`src/services/predictionService.js`)
-- urban water stress analytics (`src/services/analyticsService.js`)
-- multiple sensors per zone (new `zones` and `zone_sensors` tables)
-
-## Netlify Deploy (Serverless)
-
-This repository is now prepared to run on Netlify Functions.
-
-### Local development
-
-```bash
-npm install
-npm run dev
-```
-
-API base URL locally:
-
-`http://localhost:8888/api`
-
-Example:
-
-`GET http://localhost:8888/api/health`
-
-### Deploy in Netlify
-
-1. Push this repo to GitHub.
-2. In Netlify, create **New site from Git** and select this repo.
-3. Build settings:
-   - Build command: *(empty)*
-   - Publish directory: *(empty)*
-4. Deploy.
-
-Routes are available under:
-
-`https://<your-site>.netlify.app/api/*`
-
-### Connect mobile app
-
-In the mobile app `.env`, set:
-
-```env
-EXPO_PUBLIC_API_BASE_URL=https://<your-site>.netlify.app/api
-```
-
-Then restart Expo:
-
-```bash
-npx expo start -c
-```
+Secciones antiguas sobre Netlify, `/devices/register` o `/sensor-history` pueden no coincidir con el código actual; usar la tabla de rutas de este README.
