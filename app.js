@@ -6,6 +6,7 @@ const sensorDataRoutes = require("./routes/sensorData");
 const authRoutes = require("./routes/auth");
 const greenZonesRoutes = require("./routes/greenZones");
 const plantsRoutes = require("./routes/plants");
+const userPlantsRoutes = require("./routes/userPlants");
 const weatherRoutes = require("./routes/weather");
 const { apiLimiter } = require("./middleware/rateLimit");
 
@@ -39,6 +40,7 @@ app.use("/devices", devicesRoutes);
 app.use("/sensor-data", sensorDataRoutes);
 app.use("/green-zones", greenZonesRoutes);
 app.use("/plants", plantsRoutes);
+app.use("/user", userPlantsRoutes);
 app.use("/weather", weatherRoutes);
 
 app.use((req, res) => {

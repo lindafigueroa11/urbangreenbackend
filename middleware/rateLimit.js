@@ -6,6 +6,8 @@ const maxGlobal =
   Number(process.env.RATE_LIMIT_MAX) || 500;
 const maxClassify =
   Number(process.env.RATE_LIMIT_CLASSIFY_MAX) || 30;
+const maxInsights =
+  Number(process.env.RATE_LIMIT_INSIGHTS_MAX) || 25;
 
 /**
  * Limite general por IP (todas las rutas salvo las que se salten abajo).
@@ -38,4 +40,19 @@ const classifyLimiter = rateLimit({
   },
 });
 
-module.exports = { apiLimiter, classifyLimiter };
+/**
+ * Límite para notas IA por planta (coste OpenAI).
+ */
+const insightsLimiter = rateLimit({
+  windowMs,
+  max: maxInsights,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many insight requests",
+    details:
+      "Demasiadas solicitudes de información IA desde esta IP. Prueba más tarde.",
+  },
+});
+
+module.exports = { apiLimiter, classifyLimiter, insightsLimiter };
