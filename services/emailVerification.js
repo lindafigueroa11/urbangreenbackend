@@ -99,6 +99,81 @@ async function sendVerificationEmail(to, token) {
   console.log("[verify-email] SMTP enviado ok", { to });
 }
 
+function buildPasswordResetMailParts(token) {
+  const base = getPublicApiBase();
+  const link = `${base}/auth/reset-password?token=${encodeURIComponent(token)}`;
+  const text = `Hola,\n\nRestablece tu contraseña abriendo este enlace (caduca en 1 hora):\n${link}\n\nSi no solicitaste este cambio, ignora este mensaje.`;
+  const html = `<p>Hola,</p><p><a href="${link}">Restablecer contraseña en UrbanGreen</a></p><p>El enlace caduca en 1 hora.</p><p>Si no fuiste tú, ignora este correo.</p>`;
+  return { link, text, html };
+}
+
+async function sendPasswordResetEmail(to, token) {
+  const from = getMailFrom();
+  const { link, text, html } = buildPasswordResetMailParts(token);
+
+  const resend = getResendClient();
+  if (resend) {
+    const { data, error } = await resend.emails.send({
+      from,
+      to: [to],
+      subject: "Restablecer contraseña — UrbanGreen",
+      text,
+      html,
+    });
+    if (error) {
+      const err = new Error(error.message || "Resend API error");
+      err.name = "ResendError";
+      err.resend = error;
+      throw err;
+    }
+    console.log("[reset-password] Resend enviado ok", { to, id: data?.id });
+    return;
+  }
+
+  const transport = getMailTransport();
+  if (!transport) {
+    console.warn("[reset-password] Sin RESEND_API_KEY ni SMTP_HOST. Enlace:");
+    console.warn(link);
+    return;
+  }
+
+  await transport.sendMail({
+    from,
+    to,
+    subject: "Restablecer contraseña — UrbanGreen",
+    text,
+    html,
+  });
+  console.log("[reset-password] SMTP enviado ok", { to });
+}
+
+function sendPasswordResetEmailBackground(to, token, meta = {}) {
+  const { userId } = meta;
+  const label =
+    userId !== undefined && userId !== null
+      ? `[reset-password bg userId=${userId}]`
+      : "[reset-password bg]";
+
+  console.log(`${label} encolando envío to=${to}`);
+
+  setImmediate(() => {
+    sendPasswordResetEmail(to, token)
+      .then(() => {
+        console.log(`${label} envío completado to=${to}`);
+      })
+      .catch((err) => {
+        console.error(`${label} fallo envío to=${to}`);
+        console.error(err);
+        if (err.code) {
+          console.error(`${label} err.code=${err.code}`);
+        }
+        if (err.resend) {
+          console.error(`${label} Resend error payload:`, err.resend);
+        }
+      });
+  });
+}
+
 /**
  * Encola el envío tras la respuesta HTTP; errores solo en logs.
  * @param {string} to
@@ -136,4 +211,6 @@ module.exports = {
   generateVerificationToken,
   sendVerificationEmail,
   sendVerificationEmailBackground,
+  sendPasswordResetEmail,
+  sendPasswordResetEmailBackground,
 };

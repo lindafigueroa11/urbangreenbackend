@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node -r dotenv/config server.js",
     "start": "node server.js",
+    "simulate:sensor": "node -r dotenv/config scripts/simulate-sensor-data.js",
     "build:place-ids": "node scripts/build-park-google-place-ids.js --write",
     "build:place-ids:dry": "node scripts/build-park-google-place-ids.js --dry-run --limit=5",
     "invalidate-green-zones-cache": "node -r dotenv/config scripts/invalidate-green-zones-cache.js",

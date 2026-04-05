@@ -38,9 +38,9 @@ CREATE INDEX IF NOT EXISTS idx_devices_created_at ON public.devices (created_at 
 CREATE TABLE IF NOT EXISTS public.sensor_data (
   id SERIAL PRIMARY KEY,
   device_id INTEGER NOT NULL REFERENCES public.devices (id) ON DELETE CASCADE,
-  temperature NUMERIC NOT NULL,
+  temperature NUMERIC,
   humidity NUMERIC NOT NULL,
-  soil_moisture NUMERIC NOT NULL,
+  soil_moisture NUMERIC,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

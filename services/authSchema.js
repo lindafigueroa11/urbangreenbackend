@@ -19,6 +19,12 @@ async function ensureAuthSchema() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_expires TIMESTAMPTZ
   `);
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires TIMESTAMPTZ
+  `);
 }
 
 async function ensureUserPlantsSchema() {
