@@ -8,6 +8,7 @@ const greenZonesRoutes = require("./routes/greenZones");
 const plantsRoutes = require("./routes/plants");
 const userPlantsRoutes = require("./routes/userPlants");
 const weatherRoutes = require("./routes/weather");
+const controlRiegoRoutes = require("./routes/controlRiego");
 const { apiLimiter } = require("./middleware/rateLimit");
 
 const app = express();
@@ -38,6 +39,7 @@ app.get("/terms", (_req, res) => {
 app.use("/auth", authRoutes);
 app.use("/devices", devicesRoutes);
 app.use("/sensor-data", sensorDataRoutes);
+app.use("/control-riego", controlRiegoRoutes);
 app.use("/green-zones", greenZonesRoutes);
 app.use("/plants", plantsRoutes);
 app.use("/user", userPlantsRoutes);
