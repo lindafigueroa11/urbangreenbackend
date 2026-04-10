@@ -5,12 +5,15 @@ const {
   classifyLimiter,
   insightsLimiter,
   geminiTestLimiter,
+  chatLimiter,
 } = require("../middleware/rateLimit");
 const { geminiTestEcho } = require("../services/geminiTestEcho");
 const { validateClassifyPayload } = require("../utils/validateClassifyPayload");
 const {
   validatePlantInsightsPayload,
 } = require("../utils/validatePlantInsightsPayload");
+const { validatePlantChatPayload } = require("../utils/validatePlantChatPayload");
+const { generatePlantChatReply } = require("../services/plantChatGemini");
 
 const router = express.Router();
 
@@ -83,6 +86,55 @@ router.post("/insights", insightsLimiter, async (req, res) => {
     return res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
       error: "No se pudo generar la información de la planta.",
       code: "INSIGHTS_FAILED",
+      details: error.message,
+    });
+  }
+});
+
+router.post("/chat", chatLimiter, async (req, res) => {
+  try {
+    const checked = validatePlantChatPayload(req.body);
+    if (!checked.ok) {
+      return res.status(checked.status).json({
+        error: checked.error,
+        code: checked.code || "INVALID_PAYLOAD",
+      });
+    }
+
+    const out = await generatePlantChatReply({
+      language: checked.language,
+      context: checked.context,
+      messages: checked.messages,
+    });
+
+    return res.status(200).json({
+      reply: out.reply,
+      ...(out.warning ? { warning: out.warning } : {}),
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    if (statusCode === 503) {
+      return res.status(503).json({
+        error: error.message || "Chat IA no disponible.",
+        code: error.code || "CHAT_UNAVAILABLE",
+      });
+    }
+    if (statusCode === 429) {
+      return res.status(429).json({
+        error: "Demasiadas solicitudes al servicio IA.",
+        code: "CHAT_RATE_LIMIT",
+      });
+    }
+    if (statusCode === 504) {
+      return res.status(504).json({
+        error: error.message || "Tiempo de espera agotado.",
+        code: error.code || "CHAT_TIMEOUT",
+      });
+    }
+    console.error("POST /plants/chat error:", error);
+    return res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: "No se pudo obtener respuesta del chat.",
+      code: "CHAT_FAILED",
       details: error.message,
     });
   }

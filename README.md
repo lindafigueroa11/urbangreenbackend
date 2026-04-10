@@ -128,6 +128,7 @@ Respuesta de zonas incluye campos como `category_code`, `confidence`, `sources`,
 |--------|------|-------------|
 | `POST` | `/plants/classify` | Clasificación de imagen (rate limit) |
 | `POST` | `/plants/insights` | Notas / insights (Gemini u otro proveedor) |
+| `POST` | `/plants/chat` | Chat sobre la planta analizada (solo Gemini; requiere `GEMINI_API_KEY`; rate limit propio) |
 | `POST` | `/plants/gemini-test` | Prueba de conexión Gemini (si está configurado) |
 
 ### Plantas de usuario — `/user` (requiere autenticación)

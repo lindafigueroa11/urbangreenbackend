@@ -10,6 +10,8 @@ const maxInsights =
   Number(process.env.RATE_LIMIT_INSIGHTS_MAX) || 25;
 const maxGeminiTest =
   Number(process.env.RATE_LIMIT_GEMINI_TEST_MAX) || 15;
+const maxPlantChat =
+  Number(process.env.RATE_LIMIT_PLANT_CHAT_MAX) || 25;
 
 /**
  * Limite general por IP (todas las rutas salvo las que se salten abajo).
@@ -70,9 +72,23 @@ const geminiTestLimiter = rateLimit({
   },
 });
 
+/** POST /plants/chat (Gemini; coste API). */
+const chatLimiter = rateLimit({
+  windowMs,
+  max: maxPlantChat,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Too many plant chat requests",
+    details:
+      "Demasiados mensajes de chat desde esta IP. Prueba más tarde.",
+  },
+});
+
 module.exports = {
   apiLimiter,
   classifyLimiter,
   insightsLimiter,
   geminiTestLimiter,
+  chatLimiter,
 };

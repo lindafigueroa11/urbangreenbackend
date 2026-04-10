@@ -1,5 +1,9 @@
 const app = require("./app");
-const { ensureAuthSchema, ensureUserPlantsSchema } = require("./services/authSchema");
+const {
+  ensureAuthSchema,
+  ensureUserPlantsSchema,
+  ensurePlantChatSchema,
+} = require("./services/authSchema");
 
 const PORT = process.env.PORT || 3000;
 
@@ -8,6 +12,7 @@ async function ensureAuthSchemaWithRetry(maxAttempts = 5) {
     try {
       await ensureAuthSchema();
       await ensureUserPlantsSchema();
+      await ensurePlantChatSchema();
       console.log("Auth schema is ready.");
       return;
     } catch (error) {

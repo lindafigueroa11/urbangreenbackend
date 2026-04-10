@@ -51,5 +51,39 @@ async function ensureUserPlantsSchema() {
   `);
 }
 
-module.exports = { ensureAuthSchema, ensureUserPlantsSchema };
+async function ensurePlantChatSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS plant_chat_sessions (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plant_label TEXT NOT NULL,
+      context_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_plant_chat_sessions_user_id
+    ON plant_chat_sessions(user_id)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_plant_chat_sessions_updated_at
+    ON plant_chat_sessions(updated_at DESC)
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS plant_chat_messages (
+      id BIGSERIAL PRIMARY KEY,
+      session_id BIGINT NOT NULL REFERENCES plant_chat_sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user','model')),
+      text TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_plant_chat_messages_session_id
+    ON plant_chat_messages(session_id, created_at ASC)
+  `);
+}
+
+module.exports = { ensureAuthSchema, ensureUserPlantsSchema, ensurePlantChatSchema };
 
