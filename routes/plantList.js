@@ -47,7 +47,7 @@ router.get("/", async (req, res) => {
         FROM plants
         WHERE name ILIKE $1 OR COALESCE(scientific_name, '') ILIKE $1
         ORDER BY name ASC
-        LIMIT 50
+        LIMIT 100
         `,
         [like]
       );
@@ -58,7 +58,7 @@ router.get("/", async (req, res) => {
                plant_category, water_need, sun_exposure, soil_preference, climate_preference, notes
         FROM plants
         ORDER BY name ASC
-        LIMIT 100
+        LIMIT 500
         `
       );
     }
