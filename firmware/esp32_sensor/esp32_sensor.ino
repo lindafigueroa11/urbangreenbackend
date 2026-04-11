@@ -363,13 +363,18 @@ void stopProvisioningWeb() {
 }
 
 void startProvisioningMode(const char* reason) {
-  gProvisionMode = true;
   Serial.printf("Modo provisión: %s\n", reason);
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(kApSsid, kApPass);
+  // Canal 1 (2,4 GHz): mejor compatibilidad para que el SSID aparezca en el móvil.
+  if (!WiFi.softAP(kApSsid, kApPass, 1, 0, 4)) {
+    Serial.println("ERROR: WiFi.softAP fallo. Revisa antena, alimentación y versión del core ESP32.");
+    gProvisionMode = false;
+    return;
+  }
+  gProvisionMode = true;
   IPAddress ip = WiFi.softAPIP();
-  Serial.printf("AP SSID: %s  pass: %s\n", kApSsid, kApPass);
-  Serial.printf("Abre http://%s en el telefono (conectado a esta red)\n", ip.toString().c_str());
+  Serial.printf("AP SSID: %s  pass: %s  IP: %s\n", kApSsid, kApPass, ip.toString().c_str());
+  Serial.println("Busca en el movil la red UrbanGreen-Setup (solo 2,4 GHz).");
 
   stopProvisioningWeb();
   setupProvisionWeb();
@@ -422,6 +427,8 @@ void handleSerialLine(String line) {
     clearPrefs();
     Serial.println("Config borrada.");
     printConfig(false);
+    // Sin reinicio manual: abre el AP para que el SSID aparezca en el movil.
+    startProvisioningMode("RESET serial");
     return;
   }
 

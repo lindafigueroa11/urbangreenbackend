@@ -6,7 +6,9 @@ const router = express.Router();
 router.get("/", async (_req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, name, location, latitude, longitude, created_at FROM devices ORDER BY created_at DESC"
+      `SELECT id, name, location, latitude, longitude,
+              plant_type, created_at
+       FROM devices ORDER BY created_at DESC`
     );
     return res.status(200).json(result.rows);
   } catch (error) {
@@ -22,7 +24,7 @@ router.get("/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid device id" });
     }
     const result = await pool.query(
-      `SELECT id, name, location, latitude, longitude, created_at
+      `SELECT id, name, location, latitude, longitude, plant_type, created_at
        FROM devices WHERE id = $1`,
       [id]
     );
@@ -63,6 +65,47 @@ router.post("/", async (req, res) => {
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error("POST /devices error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: "Invalid device id" });
+    }
+    const { plant_type: plantTypeRaw } = req.body ?? {};
+    if (plantTypeRaw === undefined || plantTypeRaw === null) {
+      return res.status(400).json({ error: "plant_type is required" });
+    }
+    const plantType = String(plantTypeRaw).trim();
+    if (!plantType) {
+      return res.status(400).json({ error: "plant_type must be non-empty" });
+    }
+
+    const plantCheck = await pool.query(
+      "SELECT name FROM plants WHERE LOWER(name) = LOWER($1) LIMIT 1",
+      [plantType]
+    );
+    if (plantCheck.rows.length === 0) {
+      return res.status(400).json({ error: "Planta no encontrada en el catálogo" });
+    }
+    const canonicalName = plantCheck.rows[0].name;
+
+    const result = await pool.query(
+      `UPDATE devices
+       SET plant_type = $1
+       WHERE id = $2
+       RETURNING id, name, location, latitude, longitude, plant_type, created_at`,
+      [canonicalName, id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Device not found" });
+    }
+    return res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error("PATCH /devices/:id error:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

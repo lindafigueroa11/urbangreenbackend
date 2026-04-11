@@ -6,6 +6,7 @@ const sensorDataRoutes = require("./routes/sensorData");
 const authRoutes = require("./routes/auth");
 const greenZonesRoutes = require("./routes/greenZones");
 const plantsRoutes = require("./routes/plants");
+const plantListRoutes = require("./routes/plantList");
 const userPlantsRoutes = require("./routes/userPlants");
 const weatherRoutes = require("./routes/weather");
 const controlRiegoRoutes = require("./routes/controlRiego");
@@ -18,7 +19,6 @@ app.set("trust proxy", 1);
 app.use(cors());
 app.use(apiLimiter);
 app.use(express.json({ limit: "12mb" }));
-app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
@@ -36,14 +36,19 @@ app.get("/terms", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "terms.html"));
 });
 
+/** API antes de static para que rutas como /plants no choquen con archivos en public */
 app.use("/auth", authRoutes);
 app.use("/devices", devicesRoutes);
 app.use("/sensor-data", sensorDataRoutes);
 app.use("/control-riego", controlRiegoRoutes);
 app.use("/green-zones", greenZonesRoutes);
+app.use("/plant-catalog", plantListRoutes);
+app.use("/plants", plantListRoutes);
 app.use("/plants", plantsRoutes);
 app.use("/user", userPlantsRoutes);
 app.use("/weather", weatherRoutes);
+
+app.use(express.static(path.join(__dirname, "public")));
 
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
