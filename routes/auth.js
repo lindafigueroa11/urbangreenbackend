@@ -21,6 +21,61 @@ function toPublicUser(row) {
   };
 }
 
+/** Crea o actualiza usuario y devuelve JWT (misma lógica que POST /auth/google con access_token). */
+async function googleSessionFromAccessToken(accessToken) {
+  const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) {
+    const err = new Error("Token de acceso de Google inválido.");
+    err.statusCode = 401;
+    throw err;
+  }
+  const u = await r.json();
+  const email = u.email;
+  const name = u.name || u.given_name || (email ? email.split("@")[0] : "Usuario");
+  if (!email) {
+    const err = new Error("No se pudo obtener el email de Google.");
+    err.statusCode = 401;
+    throw err;
+  }
+  const emailNorm = String(email).trim().toLowerCase();
+  const nameTrim = String(name || "Usuario").trim().slice(0, 120);
+
+  const existing = await pool.query(
+    "SELECT id, username, email, email_verified FROM users WHERE email = $1 LIMIT 1",
+    [emailNorm]
+  );
+
+  let userRow;
+  if (existing.rowCount === 0) {
+    const randomHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+    const ins = await pool.query(
+      `INSERT INTO users (username, email, password_hash, email_verified, verification_token, verification_expires)
+       VALUES ($1, $2, $3, TRUE, NULL, NULL)
+       RETURNING id, username, email`,
+      [nameTrim, emailNorm, randomHash]
+    );
+    userRow = ins.rows[0];
+  } else {
+    userRow = existing.rows[0];
+    if (!userRow.email_verified) {
+      await pool.query("UPDATE users SET email_verified = TRUE WHERE id = $1", [userRow.id]);
+    }
+  }
+
+  const user = toPublicUser(userRow);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const expiresInSeconds = 7 * 24 * 60 * 60;
+  const sessionToken = jwt.sign(
+    { sub: user.id, email: user.email },
+    getJwtSecret(),
+    { algorithm: "HS256", expiresIn: expiresInSeconds }
+  );
+  const expiration = new Date((nowSeconds + expiresInSeconds) * 1000).toISOString();
+  return { token: sessionToken, expiration, user };
+}
+
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body || {};
@@ -427,15 +482,13 @@ router.post("/google", async (req, res) => {
         : googleClientId;
 
     if (tokenType === "access_token") {
-      const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!r.ok) {
-        return res.status(401).json({ message: "Token de acceso de Google inválido." });
+      try {
+        const session = await googleSessionFromAccessToken(token);
+        return res.status(200).json(session);
+      } catch (e) {
+        const status = e.statusCode || 401;
+        return res.status(status).json({ message: e.message || "Token de acceso de Google inválido." });
       }
-      const u = await r.json();
-      email = u.email;
-      name = u.name || u.given_name || (email ? email.split("@")[0] : "Usuario");
     } else {
       const ticket = await oauth2.verifyIdToken({
         idToken: token,
@@ -496,6 +549,72 @@ router.post("/google", async (req, res) => {
   } catch (error) {
     console.error("POST /auth/google error:", error);
     return res.status(401).json({ message: "No se pudo validar el inicio de sesión con Google." });
+  }
+});
+
+/**
+ * Intercambia authorization code + PKCE en el servidor (Expo Go + proxy auth.expo.io).
+ * El cliente OAuth "Web" de Google suele fallar si el intercambio se hace solo desde la app;
+ * aquí se usa GOOGLE_WEB_CLIENT_SECRET si está definido.
+ */
+router.post("/google/exchange-code", async (req, res) => {
+  try {
+    const googleClientId = process.env.GOOGLE_WEB_CLIENT_ID;
+    if (!googleClientId) {
+      return res.status(501).json({
+        message:
+          "Google no está configurado en el servidor (GOOGLE_WEB_CLIENT_ID).",
+      });
+    }
+
+    const { code, redirectUri, codeVerifier } = req.body || {};
+    if (!code || typeof code !== "string" || !redirectUri || typeof redirectUri !== "string") {
+      return res.status(400).json({ message: "Faltan code o redirectUri." });
+    }
+
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: code.trim(),
+      redirect_uri: redirectUri.trim(),
+      client_id: googleClientId,
+      code_verifier: typeof codeVerifier === "string" ? codeVerifier : "",
+    });
+    const clientSecret = (process.env.GOOGLE_WEB_CLIENT_SECRET || "").trim();
+    if (clientSecret) {
+      body.set("client_secret", clientSecret);
+    }
+
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    const tokenJson = await tokenRes.json();
+
+    if (!tokenRes.ok) {
+      console.error("POST /auth/google/exchange-code Google token error:", tokenJson);
+      const detail = tokenJson.error_description || tokenJson.error;
+      return res.status(401).json({
+        message: detail
+          ? `No se pudo intercambiar el código con Google: ${detail}`
+          : "No se pudo intercambiar el código con Google.",
+      });
+    }
+
+    if (!tokenJson.access_token) {
+      return res.status(502).json({ message: "Google no devolvió access_token." });
+    }
+
+    try {
+      const session = await googleSessionFromAccessToken(tokenJson.access_token);
+      return res.status(200).json(session);
+    } catch (e) {
+      const status = e.statusCode || 401;
+      return res.status(status).json({ message: e.message || "No se pudo completar la sesión." });
+    }
+  } catch (error) {
+    console.error("POST /auth/google/exchange-code error:", error);
+    return res.status(500).json({ message: "Error al completar el inicio con Google." });
   }
 });
 
