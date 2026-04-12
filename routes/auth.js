@@ -413,6 +413,19 @@ router.post("/google", async (req, res) => {
     let email;
     let name;
 
+    /** id_token puede tener aud del cliente nativo; aceptamos varios OAuth client IDs. */
+    const idTokenAudiences = [
+      googleClientId,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+    ]
+      .map((s) => (typeof s === "string" ? s.trim() : ""))
+      .filter(Boolean);
+    const idTokenAudience =
+      idTokenAudiences.length > 1
+        ? [...new Set(idTokenAudiences)]
+        : googleClientId;
+
     if (tokenType === "access_token") {
       const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
         headers: { Authorization: `Bearer ${token}` },
@@ -426,7 +439,7 @@ router.post("/google", async (req, res) => {
     } else {
       const ticket = await oauth2.verifyIdToken({
         idToken: token,
-        audience: googleClientId,
+        audience: idTokenAudience,
       });
       const payload = ticket.getPayload();
       email = payload?.email;
