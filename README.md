@@ -95,22 +95,38 @@ Base: `http://localhost:3000` (o tu URL de producción).
 | `POST` | `/auth/login` | Login |
 | `GET` | `/auth/verify-email` | Verificación de correo (query según implementación) |
 | `POST` | `/auth/resend-verification` | Reenvío de verificación |
+| `POST` | `/auth/forgot-password` | Solicitar recuperación de contraseña |
+| `GET` | `/auth/reset-password` | Formulario web de nueva contraseña por token |
+| `POST` | `/auth/reset-password` | Confirmar nueva contraseña con token |
 | `POST` | `/auth/google` | Login con Google |
+| `POST` | `/auth/google/exchange-code` | Intercambio code+PKCE (Expo Go / flujo web) |
 
 ### Dispositivos — `/devices`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/devices` | Lista dispositivos |
+| `GET` | `/devices` | Lista dispositivos (incluye estado de vínculo y usuario vinculado) |
 | `POST` | `/devices` | Alta (`name`, `location`, `latitude`, `longitude`) |
+| `GET` | `/devices/:id` | Detalle por id público (`UG...`) o id interno numérico |
+| `PATCH` | `/devices/:id` | Actualiza `plant_type` |
+| `GET` | `/devices/:id/link-status` | Estado de vínculo (`is_linked`, `linked_zone`, `linked_user_id`, `linked_username`) |
+| `POST` | `/devices/:id/link` | Vincula dispositivo a zona/usuario (`zone`, `user_id`, `username`) |
+| `POST` | `/devices/:id/unlink` | Desvincula dispositivo (limpia zona/usuario vinculados) |
 
 ### Datos de sensor — `/sensor-data`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `POST` | `/sensor-data` | Ingesta: `device_id`, `temperature`, `humidity`, `soil_moisture` |
+| `POST` | `/sensor-data` | Ingesta: `device_id`, `temperature`, `humidity`, `soil_moisture`, `battery_level` (opcional), `battery_voltage` (opcional) |
+| `POST` | `/sensor-data/simulate` | Inserta lectura simulada para pruebas |
 | `GET` | `/sensor-data` | Últimas lecturas globales; query `limit` (1–100, default 100) |
 | `GET` | `/sensor-data/:device_id` | Hasta 100 lecturas de ese `device_id` |
+
+### Control de riego — `/control-riego`
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/control-riego/:idsensor` | Promedio de humedad y recomendación de acción (`encender/apagar/mantener`) |
 
 ### Zonas verdes (Hermosillo) — `/green-zones`
 
@@ -123,7 +139,16 @@ Base: `http://localhost:3000` (o tu URL de producción).
 
 Respuesta de zonas incluye campos como `category_code`, `confidence`, `sources`, `tags: { osm, external }` y `category` (español) según el servicio actual.
 
-### Plantas (`/plants`)
+### Catálogo de plantas — `/plant-catalog` y `/plants` (listado/detalle)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/plant-catalog` | Lista/búsqueda por `q` |
+| `GET` | `/plant-catalog/:name` | Planta por nombre |
+| `GET` | `/plants` | Alias de catálogo (lista/búsqueda) |
+| `GET` | `/plants/:name` | Alias de catálogo (detalle) |
+
+### IA de plantas — `/plants`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|

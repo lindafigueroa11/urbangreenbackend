@@ -16,6 +16,12 @@ async function ensureLinkColumns() {
   await pool.query(
     "ALTER TABLE devices ADD COLUMN IF NOT EXISTS linked_zone TEXT"
   );
+  await pool.query(
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS linked_user_id BIGINT"
+  );
+  await pool.query(
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS linked_username TEXT"
+  );
   linkColumnsReady = true;
 }
 
@@ -33,7 +39,7 @@ router.get("/", async (_req, res) => {
     await ensureLinkColumns();
     const result = await pool.query(
       `SELECT id, name, location, latitude, longitude,
-              plant_type, is_linked, linked_zone, created_at
+              plant_type, is_linked, linked_zone, linked_user_id, linked_username, created_at
        FROM devices ORDER BY created_at DESC`
     );
     return res.status(200).json(result.rows.map(serializeDevice));
@@ -51,7 +57,7 @@ router.get("/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid device id" });
     }
     const result = await pool.query(
-      `SELECT id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, created_at
+      `SELECT id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, linked_user_id, linked_username, created_at
        FROM devices WHERE id = $1`,
       [id]
     );
@@ -85,7 +91,7 @@ router.post("/", async (req, res) => {
       `
       INSERT INTO devices (name, location, latitude, longitude)
       VALUES ($1, $2, $3, $4)
-      RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, created_at
+      RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, linked_user_id, linked_username, created_at
       `,
       [name, location, latitude, longitude]
     );
@@ -126,7 +132,7 @@ router.patch("/:id", async (req, res) => {
       `UPDATE devices
        SET plant_type = $1
        WHERE id = $2
-       RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, created_at`,
+       RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, linked_user_id, linked_username, created_at`,
       [canonicalName, id]
     );
     if (result.rows.length === 0) {
@@ -148,7 +154,7 @@ router.get("/:id/link-status", async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT id, is_linked, linked_zone, location
+      `SELECT id, is_linked, linked_zone, linked_user_id, linked_username, location
        FROM devices
        WHERE id = $1`,
       [id]
@@ -163,6 +169,9 @@ router.get("/:id/link-status", async (req, res) => {
       internal_id: row.id,
       is_linked: Boolean(row.is_linked),
       linked_zone: row.linked_zone ?? null,
+      linked_user_id:
+        row.linked_user_id == null ? null : String(row.linked_user_id),
+      linked_username: row.linked_username ?? null,
       location: row.location ?? null,
     });
   } catch (error) {
@@ -184,9 +193,19 @@ router.post("/:id/link", async (req, res) => {
       typeof requestedZoneRaw === "string" && requestedZoneRaw.trim()
         ? requestedZoneRaw.trim()
         : null;
+    const requestedUserIdRaw = req.body?.user_id;
+    const requestedUserId =
+      requestedUserIdRaw === undefined || requestedUserIdRaw === null
+        ? null
+        : Number(String(requestedUserIdRaw).trim());
+    const requestedUsernameRaw = req.body?.username;
+    const requestedUsername =
+      typeof requestedUsernameRaw === "string" && requestedUsernameRaw.trim()
+        ? requestedUsernameRaw.trim().slice(0, 120)
+        : null;
 
     const current = await pool.query(
-      `SELECT id, is_linked, linked_zone, location
+      `SELECT id, is_linked, linked_zone, linked_user_id, linked_username, location
        FROM devices
        WHERE id = $1`,
       [id]
@@ -197,6 +216,11 @@ router.post("/:id/link", async (req, res) => {
 
     const row = current.rows[0];
     const effectiveZone = requestedZone ?? row.location ?? "Zona principal";
+    const hasRequestedUser = Number.isInteger(requestedUserId) && requestedUserId > 0;
+    const effectiveUserId = hasRequestedUser ? requestedUserId : null;
+    const effectiveUsername = hasRequestedUser
+      ? requestedUsername ?? row.linked_username ?? null
+      : null;
 
     if (row.is_linked && row.linked_zone && row.linked_zone !== effectiveZone) {
       return res.status(409).json({
@@ -204,14 +228,28 @@ router.post("/:id/link", async (req, res) => {
         linked_zone: row.linked_zone,
       });
     }
+    if (
+      row.is_linked &&
+      row.linked_user_id != null &&
+      effectiveUserId != null &&
+      Number(row.linked_user_id) !== Number(effectiveUserId)
+    ) {
+      return res.status(409).json({
+        error: "El dispositivo ya está vinculado a otro usuario",
+        linked_user_id: String(row.linked_user_id),
+        linked_username: row.linked_username ?? null,
+      });
+    }
 
     const updated = await pool.query(
       `UPDATE devices
        SET is_linked = TRUE,
-           linked_zone = COALESCE($1, linked_zone, location, 'Zona principal')
-       WHERE id = $2
-       RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, created_at`,
-      [requestedZone, id]
+           linked_zone = COALESCE($1, linked_zone, location, 'Zona principal'),
+           linked_user_id = COALESCE($2, linked_user_id),
+           linked_username = COALESCE($3, linked_username)
+       WHERE id = $4
+       RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, linked_user_id, linked_username, created_at`,
+      [requestedZone, effectiveUserId, effectiveUsername, id]
     );
 
     return res.status(200).json(serializeDevice(updated.rows[0]));
@@ -242,9 +280,11 @@ router.post("/:id/unlink", async (req, res) => {
     const updated = await pool.query(
       `UPDATE devices
        SET is_linked = FALSE,
-           linked_zone = NULL
+           linked_zone = NULL,
+           linked_user_id = NULL,
+           linked_username = NULL
        WHERE id = $1
-       RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, created_at`,
+       RETURNING id, name, location, latitude, longitude, plant_type, is_linked, linked_zone, linked_user_id, linked_username, created_at`,
       [id]
     );
 
