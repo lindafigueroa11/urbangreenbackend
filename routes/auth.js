@@ -572,17 +572,22 @@ router.post("/google/exchange-code", async (req, res) => {
       return res.status(400).json({ message: "Faltan code o redirectUri." });
     }
 
+    const clientSecret = (process.env.GOOGLE_WEB_CLIENT_SECRET || "").trim();
+    if (!clientSecret) {
+      return res.status(503).json({
+        message:
+          "Falta GOOGLE_WEB_CLIENT_SECRET en el servidor. En Google Cloud → APIs y servicios → Credenciales, abre tu cliente OAuth tipo «Aplicación web», copia el «Secreto del cliente» y en Render añade la variable GOOGLE_WEB_CLIENT_SECRET con ese valor (luego redeploy o reinicia el servicio).",
+      });
+    }
+
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code: code.trim(),
       redirect_uri: redirectUri.trim(),
       client_id: googleClientId,
+      client_secret: clientSecret,
       code_verifier: typeof codeVerifier === "string" ? codeVerifier : "",
     });
-    const clientSecret = (process.env.GOOGLE_WEB_CLIENT_SECRET || "").trim();
-    if (clientSecret) {
-      body.set("client_secret", clientSecret);
-    }
 
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",

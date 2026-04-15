@@ -5,9 +5,13 @@
  * La app (o el navegador en http://192.168.4.1) envía ssid/pass del router
  * y api + dev del backend.
  *
+ * Ciclo normal (STA): tras conectar WiFi mide, POST /sensor-data y deep sleep
+ * durante `interval` ms (por defecto 20 min). En modo provisión (SoftAP) no duerme.
+ *
  * Dependencias: ArduinoJson (v6 o v7), placa ESP32 Arduino.
  */
 #include <Arduino.h>
+#include <esp_sleep.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -16,6 +20,7 @@
 #include <WebServer.h>
 
 #define SOIL_ADC_PIN 34
+#define BATTERY_ADC_PIN 35
 
 namespace {
 
@@ -27,6 +32,12 @@ constexpr char kApSsid[] = "UrbanGreen-Setup";
 constexpr char kApPass[] = "urbangreen";
 
 constexpr unsigned kWifiConnectAttempts = 60;
+/** Intervalo por defecto entre despertares (20 min). */
+constexpr uint32_t kDefaultIntervalMs = 20UL * 60UL * 1000UL;
+/** Ajustes de conversión para batería Li-ion 1 celda (con divisor 1:1). */
+constexpr float kBatteryMinVolt = 3.20f;
+constexpr float kBatteryMaxVolt = 4.20f;
+constexpr float kBatteryDividerFactor = 2.0f;
 
 WiFiClientSecure secureClient;
 Preferences prefs;
@@ -38,10 +49,9 @@ String gApi;
 String gDev;
 bool gTlsInsecure = true;
 bool gUseSimulated = false;
-uint32_t gIntervalMs = 60000;
+uint32_t gIntervalMs = kDefaultIntervalMs;
 
 bool gProvisionMode = false;
-unsigned long lastSendMs = 0;
 String serialLine;
 
 void savePrefs();
@@ -73,7 +83,7 @@ bool loadPrefs() {
   gDev = prefs.getString("dev", "");
   gTlsInsecure = prefs.getBool("tls", true);
   gUseSimulated = prefs.getBool("sim", false);
-  gIntervalMs = prefs.getUInt("interval", 60000);
+  gIntervalMs = prefs.getUInt("interval", kDefaultIntervalMs);
   prefs.end();
 
   if (gIntervalMs < 5000) gIntervalMs = 5000;
@@ -92,7 +102,7 @@ void clearPrefs() {
   gDev = "";
   gTlsInsecure = true;
   gUseSimulated = false;
-  gIntervalMs = 60000;
+  gIntervalMs = kDefaultIntervalMs;
 }
 
 void setupTls() {
@@ -149,7 +159,21 @@ bool readSensors(float& temperature, float& humidity, float& soilMoisture) {
   return true;
 }
 
-bool postSensorData(float temperature, float humidity, float soilMoisture) {
+void readBattery(float& batteryLevel, float& batteryVoltage) {
+  int raw = analogRead(BATTERY_ADC_PIN);
+  float adcVolt = (raw / 4095.0f) * 3.3f;
+  float battVolt = adcVolt * kBatteryDividerFactor;
+  float pct = ((battVolt - kBatteryMinVolt) / (kBatteryMaxVolt - kBatteryMinVolt)) * 100.0f;
+  batteryVoltage = battVolt;
+  batteryLevel = constrain(pct, 0.0f, 100.0f);
+}
+
+bool postSensorData(
+    float temperature,
+    float humidity,
+    float soilMoisture,
+    float batteryLevel,
+    float batteryVoltage) {
   if (gApi.isEmpty()) {
     Serial.println("ERROR: api vacia.");
     return false;
@@ -171,8 +195,9 @@ bool postSensorData(float temperature, float humidity, float soilMoisture) {
   int n = snprintf(
       body,
       sizeof(body),
-      "{\"device_id\":%d,\"temperature\":%.2f,\"humidity\":%.2f,\"soil_moisture\":%.2f}",
-      devId, temperature, humidity, soilMoisture);
+      "{\"device_id\":%d,\"temperature\":%.2f,\"humidity\":%.2f,\"soil_moisture\":%.2f,"
+      "\"battery_level\":%.1f,\"battery_voltage\":%.3f}",
+      devId, temperature, humidity, soilMoisture, batteryLevel, batteryVoltage);
 
   if (n <= 0 || static_cast<size_t>(n) >= sizeof(body)) {
     Serial.println("ERROR: JSON demasiado largo.");
@@ -330,7 +355,8 @@ void handleRootGet() {
       "<input name='api' placeholder='https://urbangreen.onrender.com' required style='width:100%'></p>"
       "<p>Device ID (numero)<br><input name='dev' placeholder='1' required style='width:100%'></p>"
       "<p><label><input type='checkbox' name='tls' value='1' checked> TLS inseguro (pruebas)</label></p>"
-      "<p>Intervalo ms (min 5000)<br><input name='interval' value='60000' style='width:100%'></p>"
+      "<p>Intervalo ms entre lecturas / deep sleep (min 5000)<br><input name='interval' "
+      "value='1200000' style='width:100%'></p>"
       "<button type='submit'>Guardar y reiniciar</button>"
       "</form>"
       "<p style='font-size:12px;opacity:.8'>API app: POST /provision (form o JSON) — GET /status</p>"
@@ -407,6 +433,8 @@ void printHelp() {
   Serial.println("  PROV   -> abre red UrbanGreen-Setup para configurar desde la app");
   Serial.println("  SET {...}");
   Serial.println();
+  Serial.println("Con WiFi OK: ventana ~2,5s para PROV/SET luego lectura + deep sleep.");
+  Serial.println();
 }
 
 void handleSerialLine(String line) {
@@ -446,8 +474,11 @@ void handleSerialLine(String line) {
       Serial.println("En modo PROV no se envian lecturas.");
       return;
     }
-    float t, h, s;
-    if (readSensors(t, h, s)) postSensorData(t, h, s);
+    float t, h, s, bLevel, bVolt;
+    if (readSensors(t, h, s)) {
+      readBattery(bLevel, bVolt);
+      postSensorData(t, h, s, bLevel, bVolt);
+    }
     return;
   }
 
@@ -484,8 +515,45 @@ void pollSerialCommands() {
   }
 }
 
-bool hasMinimumConfig() {
-  return gSsid.length() > 0 && gApi.length() > 0 && gDev.length() > 0;
+void runStaSendAndDeepSleep() {
+  constexpr unsigned kSerialWindowMs = 2500;
+  unsigned long t0 = millis();
+  while (millis() - t0 < kSerialWindowMs) {
+    pollSerialCommands();
+    delay(50);
+  }
+
+  if (gProvisionMode) {
+    Serial.println("Modo provisión activo; sin deep sleep en este ciclo.");
+    return;
+  }
+
+  float temperature = 0, humidity = 0, soilMoisture = 0;
+  float batteryLevel = 0, batteryVoltage = 0;
+  if (readSensors(temperature, humidity, soilMoisture)) {
+    readBattery(batteryLevel, batteryVoltage);
+    Serial.printf(
+        "Lectura: T=%.2f H=%.2f suelo=%.2f batt=%.1f%% (%.3fV)\n",
+        temperature,
+        humidity,
+        soilMoisture,
+        batteryLevel,
+        batteryVoltage);
+    if (!postSensorData(temperature, humidity, soilMoisture, batteryLevel, batteryVoltage)) {
+      Serial.println("Envío fallido; deep sleep igual para ahorrar batería.");
+    }
+  }
+
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+
+  uint64_t sleep_us = static_cast<uint64_t>(gIntervalMs) * 1000ULL;
+  esp_sleep_enable_timer_wakeup(sleep_us);
+
+  Serial.printf("Deep sleep %lu s hasta el próximo ciclo.\n",
+                static_cast<unsigned long>(sleep_us / 1000000ULL));
+  Serial.flush();
+  esp_deep_sleep_start();
 }
 
 }  // namespace
@@ -499,13 +567,22 @@ void setup() {
   setupTls();
 
   Serial.println("\nUrbanGreen ESP32 iniciado.");
+  switch (esp_sleep_get_wakeup_cause()) {
+    case ESP_SLEEP_WAKEUP_TIMER:
+      Serial.println("Despertar: timer (deep sleep).");
+      break;
+    case ESP_SLEEP_WAKEUP_UNDEFINED:
+      break;
+    default:
+      Serial.println("Despertar: otro motivo / arranque en frío.");
+      break;
+  }
   printHelp();
   printConfig();
 
   if (!ok) {
     Serial.println("Sin config completa: modo provisión (SoftAP).");
     startProvisioningMode("falta ssid/api/dev");
-    lastSendMs = millis();
     return;
   }
 
@@ -513,11 +590,11 @@ void setup() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("No se pudo conectar: entra en modo provisión.");
     startProvisioningMode("WiFi fallo tras arranque");
-    lastSendMs = millis();
     return;
   }
 
-  lastSendMs = millis() - gIntervalMs;
+  Serial.println("WiFi OK: ciclo lectura + envío + deep sleep.");
+  runStaSendAndDeepSleep();
 }
 
 void loop() {
@@ -529,23 +606,5 @@ void loop() {
     return;
   }
 
-  if (!hasMinimumConfig()) {
-    delay(100);
-    return;
-  }
-
-  unsigned long now = millis();
-  if (now - lastSendMs < gIntervalMs) {
-    delay(100);
-    return;
-  }
-  lastSendMs = now;
-
-  float temperature = 0, humidity = 0, soilMoisture = 0;
-  if (!readSensors(temperature, humidity, soilMoisture)) return;
-
-  Serial.printf("Lectura: T=%.2f H=%.2f suelo=%.2f\n", temperature, humidity, soilMoisture);
-
-  bool sent = postSensorData(temperature, humidity, soilMoisture);
-  if (!sent) Serial.println("No se pudo enviar la lectura.");
+  delay(100);
 }

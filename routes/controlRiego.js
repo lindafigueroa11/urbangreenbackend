@@ -1,5 +1,6 @@
 const express = require("express");
 const pool = require("../db");
+const { toInternalDeviceId } = require("../utils/devicePublicId");
 
 const router = express.Router();
 
@@ -18,9 +19,9 @@ function moistureForIrrigation(row) {
 
 router.get("/:idsensor", async (req, res) => {
   const { idsensor } = req.params;
-  const deviceId = Number(idsensor);
-  if (!Number.isInteger(deviceId) || deviceId < 1) {
-    return res.status(400).json({ error: "idsensor debe ser un entero positivo" });
+  const deviceId = toInternalDeviceId(idsensor);
+  if (!deviceId) {
+    return res.status(400).json({ error: "idsensor inválido" });
   }
 
   try {

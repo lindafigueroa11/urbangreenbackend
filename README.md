@@ -68,7 +68,7 @@ Ver [`.env.example`](./.env.example) para la lista completa. Destacadas:
 | `DATABASE_URL` | PostgreSQL (usuarios / datos que usen `db.js`) |
 | `JWT_SECRET` | Tokens de sesión |
 | `GOOGLE_WEB_CLIENT_ID` | Mismo Client ID OAuth **Web** que `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` en la app; requerido para `POST /auth/google` (checklist Google Cloud en el repo de la app: `docs/GOOGLE_AUTH_SETUP.md`) |
-| `GOOGLE_WEB_CLIENT_SECRET` | Opcional pero **recomendado para Expo Go** (proxy `auth.expo.io`): secreto del cliente Web en Google Cloud; usado por `POST /auth/google/exchange-code` para intercambiar el código OAuth en el servidor. No lo pongas en la app. |
+| `GOOGLE_WEB_CLIENT_SECRET` | **Obligatorio** para login Google vía `POST /auth/google/exchange-code` (p. ej. Expo Go): secreto del cliente Web en Google Cloud. En Render: Environment → añadir variable. No lo pongas en la app Expo. |
 | `GOOGLE_PLACES_API_KEY` | Proxy de fotos `/green-zones/hermosillo/place-photo*` |
 | `GEOAPIFY_API_KEY` | Opcional: enriquecimiento de zonas tras Overpass |
 | `FOURSQUARE_API_KEY` | Opcional: idem |
