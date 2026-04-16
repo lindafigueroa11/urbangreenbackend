@@ -17,6 +17,23 @@ async function ensureBatteryColumns() {
   batteryColumnsReady = true;
 }
 
+function formatHumanDate(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
+function mapReadingRow(row) {
+  return {
+    ...row,
+    created_at_human: formatHumanDate(row.created_at),
+  };
+}
+
 function toNullableNumber(value) {
   if (value === undefined || value === null || value === "") {
     return null;
@@ -68,7 +85,7 @@ router.post("/", async (req, res) => {
       [internalDeviceId, temp, hum, soil, batteryLevel, batteryVoltage]
     );
 
-    return res.status(201).json(result.rows[0]);
+    return res.status(201).json(mapReadingRow(result.rows[0]));
   } catch (error) {
     return respondSensorDataInsertError(res, error, "POST /sensor-data error");
   }
@@ -107,7 +124,7 @@ router.post("/simulate", async (req, res) => {
     );
     return res.status(201).json({
       simulated: true,
-      ...result.rows[0],
+      ...mapReadingRow(result.rows[0]),
     });
   } catch (error) {
     return respondSensorDataInsertError(res, error, "POST /sensor-data/simulate error");
@@ -132,7 +149,7 @@ router.get("/", async (req, res) => {
       [limit]
     );
 
-    return res.status(200).json(result.rows);
+    return res.status(200).json(result.rows.map(mapReadingRow));
   } catch (error) {
     console.error("GET /sensor-data error:", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -158,7 +175,7 @@ router.get("/:device_id", async (req, res) => {
       [internalDeviceId]
     );
 
-    return res.status(200).json(result.rows);
+    return res.status(200).json(result.rows.map(mapReadingRow));
   } catch (error) {
     console.error("GET /sensor-data/:device_id error:", error);
     return res.status(500).json({ error: "Internal server error" });
